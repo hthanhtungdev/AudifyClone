@@ -151,10 +151,9 @@ function App() {
     if (!content) return;
     setIsAutoScrollEnabled(true); // Bật lại cuộn khi chọn từ mới
     
-    // Thực hiện nhảy đến từ mới lập tức (instant) để tránh jitter trên iPhone
+    // Nhảy tới từ mới lập tức (instant) để tránh jitter trên iPhone
     if (mainContentRef.current) {
-      const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement || 
-                          document.querySelector(`[data-highlight="true"]`) as HTMLElement;
+      const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
         const containerRect = container.getBoundingClientRect();
@@ -292,20 +291,15 @@ function App() {
         const elementRect = activeElement.getBoundingClientRect();
         const relativeTop = elementRect.top - containerRect.top;
 
-        // CHỈ CUỘN KHI highlight xuống quá thấp (> 300px) hoặc quá cao (< 50px)
-        // Dùng bước cuộn lớn (Large Step) để giảm số lần gọi animate
+        // Chỉ cuộn bước lớn (Large Step) khi ra khỏi vùng an toàn 50px - 300px
         if (relativeTop > 300 || relativeTop < 50) {
-          const contentTop = container.scrollTop + (elementRect.top - containerRect.top);
+          const contentTop = container.scrollTop + relativeTop;
           const target = contentTop - 120;
           
           isScrollingToRef.current = true;
-          container.scrollTo({
-            top: target,
-            behavior: 'smooth'
-          });
+          container.scrollTo({ top: target, behavior: 'smooth' });
           
           lastScrollTime.current = now;
-          // Tự động gỡ lock sau 1s (thời gian animation)
           setTimeout(() => { isScrollingToRef.current = false; }, 1000);
         }
       }
@@ -530,9 +524,10 @@ function App() {
               })()}
             </div>
           ) : (
-            <p className="text-lg leading-loose text-gray-500 text-center mt-10">
-              Chưa có nội dung.<br /> Hãy dán URL (Đặc biệt là link Google Docs bạn vừa cung cấp) và ấn "Tải chữ" để lấy nội dung nhé!
-            </p>
+            <div className="flex flex-col items-center justify-center py-20 text-gray-600">
+              <Link2 className="w-12 h-12 mb-4 opacity-20" />
+              <p className="text-center font-medium">Chưa có nội dung. Hãy dán URL và ấn "Tải chữ"!</p>
+            </div>
           )}
         </div>
 
