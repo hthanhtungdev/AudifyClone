@@ -263,13 +263,19 @@ function App() {
 
   // Cuộn tự động đến đoạn đang highlight
   useEffect(() => {
-    if (highlightCharIndex !== -1 && isAutoScrollEnabled) {
-      const activeElement = document.querySelector('[data-highlight="true"]');
+    if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
+      const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
       if (activeElement) {
-        activeElement.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
+        const container = mainContentRef.current;
+        const targetScrollTop = activeElement.offsetTop - 80;
+        
+        // Chỉ cuộn nếu khoảng cách hiện tại khác xa mục tiêu (tránh nhảy liên tục)
+        if (Math.abs(container.scrollTop - targetScrollTop) > 20) {
+          container.scrollTo({
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        }
       }
     }
   }, [highlightCharIndex, isAutoScrollEnabled]);
