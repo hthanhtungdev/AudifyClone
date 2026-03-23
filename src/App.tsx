@@ -249,24 +249,37 @@ function App() {
 
         <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2">
           {content ? (
-            <div className="text-lg leading-loose text-gray-300 font-serif whitespace-pre-line break-words pb-10">
-              {/* Render content with highlighting */}
-              {content.split(/(\s+)/).reduce((acc: any[], part, i) => {
-                const prevLength = acc.reduce((sum, item) => sum + (item.props ? item.props.children.length : 0), 0);
-                const isHighlighted = highlightCharIndex >= prevLength && highlightCharIndex < prevLength + part.length;
-                
-                acc.push(
-                  <span 
-                    key={i} 
-                    onClick={() => playFromStart(prevLength)}
-                    className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded px-0.5 ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
-                    data-highlight={isHighlighted ? "true" : "false"}
-                  >
-                    {part}
-                  </span>
-                );
-                return acc;
-              }, [])}
+            <div className="text-lg leading-loose text-gray-300 font-serif pb-10">
+              {/* Render content with HTML paragraphs and highlighting */}
+              {(() => {
+                let globalIndex = 0;
+                return content.split(/([\r\n]+)/).map((segment, segIndex) => {
+                  if (/^[\r\n]+$/.test(segment)) {
+                    globalIndex += segment.length;
+                    return null;
+                  }
+                  
+                  return (
+                    <p key={segIndex} className="mb-6 text-left whitespace-pre-wrap break-words">
+                      {segment.split(/(\s+)/).map((part, i) => {
+                        const startIndex = globalIndex;
+                        const isHighlighted = highlightCharIndex >= startIndex && highlightCharIndex < startIndex + part.length;
+                        globalIndex += part.length;
+                        return (
+                          <span 
+                            key={i} 
+                            onClick={() => playFromStart(startIndex)}
+                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded px-0.5 ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
+                            data-highlight={isHighlighted ? "true" : "false"}
+                          >
+                            {part}
+                          </span>
+                        );
+                      })}
+                    </p>
+                  );
+                });
+              })()}
             </div>
           ) : (
             <p className="text-lg leading-loose text-gray-500 text-center mt-10">
