@@ -153,7 +153,7 @@ function App() {
     
     // Thực hiện nhảy đến từ mới lập tức (instant) để tránh jitter trên iPhone
     if (mainContentRef.current) {
-      const activeElement = document.querySelector(`span[onClick*="playFromStart(${startIndex})"]`) as HTMLElement || 
+      const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement || 
                           document.querySelector(`[data-highlight="true"]`) as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
@@ -515,7 +515,8 @@ function App() {
                         return (
                           <span
                             key={i}
-                            onClick={() => playFromStart(startIndex)}
+                            onDoubleClick={() => playFromStart(startIndex)}
+                            data-index={startIndex}
                             className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded ${!isWhitespace ? "px-0.5" : "px-0"} ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
                             data-highlight={isHighlighted ? "true" : "false"}
                           >
