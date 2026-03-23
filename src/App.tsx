@@ -4,7 +4,7 @@ import { Readability } from '@mozilla/readability';
 
 function App() {
   const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
-  const [content, setContent] = useState(() => localStorage.getItem('audify_content') || '');
+  const [content, setContent] = useState(() => (localStorage.getItem('audify_content') || '').normalize('NFC'));
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
@@ -72,13 +72,27 @@ function App() {
       const reader = new Readability(doc);
       const article = reader.parse();
 
-      if (article && article.textContent && article.textContent.trim().length > 50) {
-        const text = article.textContent.trim();
-        setContent(text);
+      let finalString = '';
+
+      if (article && article.content) {
+        // Thêm newline cho các thẻ block để giữ nguyên paragraph khi lấy text
+        let html = article.content;
+        html = html.replace(/<br\s*\/?>/gi, '\n');
+        html = html.replace(/<\/p>/gi, '\n\n');
+        html = html.replace(/<\/(div|h1|h2|h3|h4|h5|h6|li)>/gi, '\n');
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        const text = tempDiv.textContent || tempDiv.innerText || '';
+        finalString = text.replace(/\n\s*\n/g, '\n\n').trim();
+      }
+
+      if (finalString.length > 50) {
+        setContent(finalString.normalize("NFC"));
       } else {
         // Fallback: nếu Readability không hiểu được structure (như Docs hay bị)
         const text = doc.body.innerText.replace(/\n\s*\n/g, '\n\n').trim();
-        setContent(text);
+        setContent(text.normalize("NFC"));
       }
     } catch (err: any) {
       setContent('Lỗi tải văn bản: ' + err.message);
@@ -110,7 +124,8 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     
     const currentVoices = window.speechSynthesis.getVoices();
-    const voice = currentVoices.find(v => v.name === selectedVoiceName) || 
+    const voice = currentVoices.find(v => v.voiceURI === selectedVoiceName) || 
+                  currentVoices.find(v => v.name === selectedVoiceName) || 
                   currentVoices.find(v => v.lang.includes('vi'));
                   
     if (voice) {
@@ -194,16 +209,22 @@ function App() {
             >
               {voices
                 .sort((a, b) => {
-                  const aEnhanced = a.name.includes('Premium') || a.name.includes('Enhanced');
-                  const bEnhanced = b.name.includes('Premium') || b.name.includes('Enhanced');
+                  const aVal = a.name + a.voiceURI;
+                  const bVal = b.name + b.voiceURI;
+                  const aEnhanced = aVal.toLowerCase().includes('premium') || aVal.toLowerCase().includes('enhanced');
+                  const bEnhanced = bVal.toLowerCase().includes('premium') || bVal.toLowerCase().includes('enhanced');
                   return (bEnhanced ? 1 : 0) - (aEnhanced ? 1 : 0);
                 })
-                .map(v => (
-                  <option key={v.name} value={v.name}>
-                    {v.name.replace('Microsoft', '').replace('Google', '').trim()} 
-                    {(v.name.includes('Premium') || v.name.includes('Enhanced')) ? ' (Nâng cao ✨)' : ''}
-                  </option>
-                ))}
+                .map(v => {
+                  const vVal = v.name + v.voiceURI;
+                  const isEnhanced = vVal.toLowerCase().includes('premium') || vVal.toLowerCase().includes('enhanced');
+                  return (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {v.name.replace('Microsoft', '').replace('Google', '').trim()} 
+                      {isEnhanced ? ' (Nâng cao ✨)' : ''}
+                    </option>
+                  );
+                })}
             </select>
             <p className="text-xs text-gray-500 italic">
               Lưu ý: Nếu không thấy giọng tiếng Việt, hãy vào Cài đặt iPhone &rarr; Trợ năng &rarr; Nội dung được đọc &rarr; Giọng nói để tải về.
@@ -247,9 +268,9 @@ function App() {
           </div>
         </div>
 
-        <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2">
+        <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2 lg:px-4">
           {content ? (
-            <div className="text-lg leading-loose text-gray-300 font-serif pb-10">
+            <div className="text-base leading-[1.8] tracking-tight text-gray-300 font-serif pb-10">
               {/* Render content with HTML paragraphs and highlighting */}
               {(() => {
                 let globalIndex = 0;
