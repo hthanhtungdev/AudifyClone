@@ -261,26 +261,33 @@ function App() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Tối ưu cuộn tự động (Comfort Zone + Throttle)
+  // Tối ưu cuộn tự động (Comfort Zone + Throttle) - Sửa lỗi nhảy giật trên iPhone
   const lastScrollTime = useRef(0);
   useEffect(() => {
     if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
       const now = Date.now();
-      if (now - lastScrollTime.current < 500) return; // Throttle 500ms
+      if (now - lastScrollTime.current < 800) return; // Throttle 800ms để tránh tranh chấp animation
 
       const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = activeElement.getBoundingClientRect();
         
-        // Vị trí của phần tử so với mép trên của vùng chứa
-        const relativeTop = elementRect.top - containerRect.top;
+        // Tính toán khoảng cách thật của phần tử so với container cha
+        // offsetTop của span có thể không chính xác do nó nằm trong p, h, v.v.
+        // Cần tính tổng offsetTop lên đến mainContentRef
+        let actualTop = 0;
+        let curr: HTMLElement | null = activeElement;
+        while (curr && curr !== container) {
+          actualTop += curr.offsetTop;
+          curr = curr.offsetParent as HTMLElement;
+        }
 
-        // "Vùng an toàn" (60px - 180px từ trên xuống)
-        // Nếu nằm trong vùng này thì KHÔNG CUỘN để tránh màn hình bị giật liên tục
-        if (relativeTop < 60 || relativeTop > 180) {
-          const targetScrollTop = container.scrollTop + relativeTop - 100;
+        const currentScroll = container.scrollTop;
+        const relativeTop = actualTop - currentScroll;
+
+        // "Vùng an toàn" (60px - 200px từ trên xuống)
+        if (relativeTop < 60 || relativeTop > 200) {
+          const targetScrollTop = actualTop - 100;
           container.scrollTo({
             top: targetScrollTop,
             behavior: 'smooth'
@@ -430,7 +437,7 @@ function App() {
 
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar"
+        className="flex-1 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar relative"
         onScroll={handleScroll}
         onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
