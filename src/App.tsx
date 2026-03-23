@@ -15,9 +15,15 @@ function App() {
   const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [showHeader, setShowHeader] = useState(true);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
 
   const GOOGLE_TTS_ID = 'google_v_online';
   const googleAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastScrollY = useRef(0);
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
 
 
 
@@ -268,6 +274,35 @@ function App() {
     }
   }, [highlightCharIndex, isAutoScrollEnabled]);
 
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const currentScrollY = e.currentTarget.scrollTop;
+    
+    // Hiện nút cuộn lên đầu khi cuộn qua 300px
+    setShowScrollTop(currentScrollY > 300);
+
+    // Logic ẩn/hiện header dựa trên hướng cuộn
+    if (currentScrollY > lastScrollY.current && currentScrollY > 100) {
+      // Cuộn xuống -> Ẩn
+      setShowHeader(false);
+    } else if (currentScrollY < lastScrollY.current || currentScrollY < 10) {
+      // Cuộn lên hoặc về đầu -> Hiện
+      setShowHeader(true);
+    }
+    
+    lastScrollY.current = currentScrollY;
+  };
+
+  const scrollToTop = () => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+      setShowHeader(true);
+    }
+  };
+
+
   const handleStop = () => {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
@@ -280,8 +315,8 @@ function App() {
 
   return (
     <div className="w-full h-screen bg-black text-gray-200 flex flex-col font-sans">
-      <header className="p-4 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
-        <h1 className="text-xl font-bold flex items-center gap-2">
+      <header className={`bg-gray-900 border-b border-gray-800 flex items-center justify-between transition-all duration-300 overflow-hidden ${showHeader ? 'h-16 p-4 opacity-100' : 'h-0 p-0 opacity-0 border-0'}`}>
+        <h1 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
           <span className="bg-blue-600 p-1.5 rounded-lg text-white">
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
               <rect x="3" y="8" width="4" height="8" rx="2" />
@@ -298,6 +333,7 @@ function App() {
           <Settings className="w-6 h-6" />
         </button>
       </header>
+
 
       {showSettings && (
         <div className="p-4 bg-gray-900 border-b border-gray-800 animate-in slide-in-from-top duration-200">
@@ -362,12 +398,16 @@ function App() {
       )}
 
       <main 
+        ref={mainContentRef}
         className="flex-1 overflow-y-auto p-4 flex flex-col items-center"
+        onScroll={handleScroll}
         onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
       >
-        <div className="w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-2xl mb-4">
-          <div className="flex gap-2">
+        <div className={`w-full max-w-2xl transition-all duration-300 ${showHeader ? 'translate-y-0 opacity-100 scale-100 mb-4' : '-translate-y-4 opacity-0 scale-95 pointer-events-none h-0 mb-0'}`}>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-2xl">
+            <div className="flex gap-2">
+
             <div className="relative flex-1">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Link2 className="h-5 w-5 text-gray-500" />
@@ -399,8 +439,9 @@ function App() {
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2 lg:px-4">
+        <div className="w-full max-w-3xl mb-32 lg:mb-10 px-2 lg:px-4">
           {content ? (
             <div className="text-base leading-[1.8] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
               {/* Render content with HTML paragraphs and highlighting */}
@@ -450,7 +491,21 @@ function App() {
             Tiếp tục cuộn tự động
           </button>
         )}
+
+        {/* Scroll To Top Button */}
+        {showScrollTop && (
+          <button 
+            onClick={scrollToTop}
+            className={`fixed ${!isAutoScrollEnabled && isPlaying ? 'bottom-44' : 'bottom-32'} right-6 bg-gray-800 text-white p-4 rounded-full shadow-2xl hover:bg-gray-700 transition-all active:scale-90 z-20 border border-gray-700`}
+            title="Cuộn lên đầu"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6">
+              <path d="M18 15l-6-6-6 6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
       </main>
+
 
       {/* Media Controller */}
       <footer className="bg-gray-900 border-t border-gray-800 p-4 pb-8 fixed bottom-0 left-0 right-0 z-10 lg:static">
