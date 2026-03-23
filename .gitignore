@@ -13,3 +13,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
+*.log
+*.txt
+.gemini

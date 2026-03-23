@@ -3,26 +3,47 @@ import { Play, Pause, Square, Settings, Link2, Loader2 } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
 function App() {
-  const [url, setUrl] = useState('');
-  const [content, setContent] = useState('');
+  const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
+  const [content, setContent] = useState(() => localStorage.getItem('audify_content') || '');
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [speed, setSpeed] = useState(1.0);
+  const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState<string>('');
+  const [selectedVoiceName, setSelectedVoiceName] = useState(() => localStorage.getItem('audify_voice') || '');
   const [showSettings, setShowSettings] = useState(false);
   const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+
+  // Sync state with localStorage
+  useEffect(() => {
+    localStorage.setItem('audify_url', url);
+  }, [url]);
+
+  useEffect(() => {
+    localStorage.setItem('audify_content', content);
+  }, [content]);
+
+  useEffect(() => {
+    localStorage.setItem('audify_speed', speed.toString());
+  }, [speed]);
+
+  useEffect(() => {
+    localStorage.setItem('audify_voice', selectedVoiceName);
+  }, [selectedVoiceName]);
 
   // Initialize voices
   useEffect(() => {
     const updateVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
-      setVoices(availableVoices);
+      // Chỉ giữ lại các giọng tiếng Việt theo yêu cầu
+      const vnVoices = availableVoices.filter(v => v.lang.includes('vi'));
+      setVoices(vnVoices);
       
-      // Tự động chọn giọng Việt đầu tiên nếu chưa chọn
-      if (!selectedVoiceName) {
-        const vnVoice = availableVoices.find(v => v.lang.includes('vi'));
-        if (vnVoice) setSelectedVoiceName(vnVoice.name);
+      // Tự động chọn giọng phù hợp nhất nếu chưa chọn
+      if (!selectedVoiceName && vnVoices.length > 0) {
+        const bestVoice = vnVoices.find(v => v.name.includes('Premium') || v.name.includes('Enhanced')) || 
+                         vnVoices[0];
+        if (bestVoice) setSelectedVoiceName(bestVoice.name);
       }
     };
 
@@ -47,18 +68,17 @@ function App() {
 
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
-
-      // Tối ưu để bắt text từ Google Docs Mobile View
-      // Các link docs.google.com/mobilebasic hiển thị dạng div hoặc p nằm gọn
       
       const reader = new Readability(doc);
       const article = reader.parse();
 
       if (article && article.textContent && article.textContent.trim().length > 50) {
-        setContent(article.textContent.trim());
+        const text = article.textContent.trim();
+        setContent(text);
       } else {
         // Fallback: nếu Readability không hiểu được structure (như Docs hay bị)
-        setContent(doc.body.innerText.replace(/\n\s*\n/g, '\n\n').trim());
+        const text = doc.body.innerText.replace(/\n\s*\n/g, '\n\n').trim();
+        setContent(text);
       }
     } catch (err: any) {
       setContent('Lỗi tải văn bản: ' + err.message);
@@ -76,16 +96,18 @@ function App() {
         window.speechSynthesis.resume();
         setIsPlaying(true);
       } else {
-        playFromStart();
+        playFromStart(0);
       }
     }
   };
 
-  const playFromStart = () => {
+  const playFromStart = (startIndex: number = 0) => {
     if (!content) return;
     window.speechSynthesis.cancel();
     
-    const utterance = new SpeechSynthesisUtterance(content);
+    // Nếu đọc từ giữa đoạn, lấy phần content từ startIndex
+    const textToSpeak = content.slice(startIndex);
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     
     const currentVoices = window.speechSynthesis.getVoices();
     const voice = currentVoices.find(v => v.name === selectedVoiceName) || 
@@ -93,7 +115,6 @@ function App() {
                   
     if (voice) {
       utterance.voice = voice;
-      // Force lang if needed
       utterance.lang = voice.lang;
     }
     
@@ -113,7 +134,8 @@ function App() {
     // Theo dõi vị trí đang đọc để highlight
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
-        setHighlightCharIndex(event.charIndex);
+        // Cộng thêm startIndex để highlight đúng vị trí trong content gốc
+        setHighlightCharIndex(event.charIndex + startIndex);
       }
     };
 
@@ -121,27 +143,23 @@ function App() {
     setIsPlaying(true);
   };
 
+  // Cuộn tự động đến đoạn đang highlight
+  useEffect(() => {
+    if (highlightCharIndex !== -1) {
+      const activeElement = document.querySelector('[data-highlight="true"]');
+      if (activeElement) {
+        activeElement.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    }
+  }, [highlightCharIndex]);
+
   const handleStop = () => {
     window.speechSynthesis.cancel();
     setIsPlaying(false);
     setHighlightCharIndex(-1);
-  };
-
-  const cycleSpeed = () => {
-    const speeds = [1.0, 1.25, 1.5, 2.0, 0.75];
-    const currentIndex = speeds.indexOf(speed);
-    const nextSpeed = speeds[(currentIndex + 1) % speeds.length];
-    setSpeed(nextSpeed);
-    
-    // Nếu đang phát thì phải khởi động lại với tốc độ mới
-    if (isPlaying) {
-      handleStop();
-      setTimeout(() => {
-         // This is a naive restart from beginning. 
-         // Real app needs tracking index, but for now we restart.
-         playFromStart();
-      }, 100);
-    }
   };
 
   return (
@@ -174,13 +192,18 @@ function App() {
               onChange={(e) => setSelectedVoiceName(e.target.value)}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none"
             >
-              {voices.filter(v => v.lang.includes('vi')).length > 0 ? (
-                voices.filter(v => v.lang.includes('vi')).map(v => (
-                  <option key={v.name} value={v.name}>{v.name.replace('Microsoft', '').replace('Google', '').trim()}</option>
-                ))
-              ) : (
-                <option value="">(Không tìm thấy giọng tiếng Việt)</option>
-              )}
+              {voices
+                .sort((a, b) => {
+                  const aEnhanced = a.name.includes('Premium') || a.name.includes('Enhanced');
+                  const bEnhanced = b.name.includes('Premium') || b.name.includes('Enhanced');
+                  return (bEnhanced ? 1 : 0) - (aEnhanced ? 1 : 0);
+                })
+                .map(v => (
+                  <option key={v.name} value={v.name}>
+                    {v.name.replace('Microsoft', '').replace('Google', '').trim()} 
+                    {(v.name.includes('Premium') || v.name.includes('Enhanced')) ? ' (Nâng cao ✨)' : ''}
+                  </option>
+                ))}
             </select>
             <p className="text-xs text-gray-500 italic">
               Lưu ý: Nếu không thấy giọng tiếng Việt, hãy vào Cài đặt iPhone &rarr; Trợ năng &rarr; Nội dung được đọc &rarr; Giọng nói để tải về.
@@ -226,7 +249,9 @@ function App() {
                 acc.push(
                   <span 
                     key={i} 
-                    className={isHighlighted ? "bg-blue-600 text-white rounded px-0.5 transition-colors duration-200" : ""}
+                    onClick={() => playFromStart(prevLength)}
+                    className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded px-0.5 ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
+                    data-highlight={isHighlighted ? "true" : "false"}
                   >
                     {part}
                   </span>
@@ -263,12 +288,56 @@ function App() {
             )}
           </button>
 
-          <button 
-            onClick={cycleSpeed}
-            className="p-4 rounded-full bg-gray-800 hover:bg-gray-700 transition-transform active:scale-95 text-gray-300 font-bold w-16 text-center"
-          >
-            {speed}x
-          </button>
+          <div className="relative">
+            {showSpeedMenu && (
+              <div className="absolute bottom-full right-0 mb-4 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl p-4 w-64 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+                <div className="flex flex-col gap-4">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-sm font-semibold text-gray-400">Tốc độ: <span className="text-blue-500">{speed.toFixed(1)}x</span></span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="3.0" 
+                    step="0.1" 
+                    value={speed}
+                    onChange={(e) => {
+                      const newSpeed = parseFloat(e.target.value);
+                      setSpeed(newSpeed);
+                      if (isPlaying) {
+                        handleStop();
+                        setTimeout(() => playFromStart(highlightCharIndex), 50);
+                      }
+                    }}
+                    className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <div className="grid grid-cols-4 gap-1">
+                    {[1.0, 1.5, 2.0, 3.0].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => {
+                          setSpeed(s);
+                          if (isPlaying) {
+                            handleStop();
+                            setTimeout(() => playFromStart(highlightCharIndex), 50);
+                          }
+                        }}
+                        className={`py-2 rounded-lg text-xs font-bold transition-colors ${speed === s ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-400'}`}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            <button 
+              onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+              className={`p-4 rounded-full transition-colors active:scale-95 font-bold w-16 text-center ${showSpeedMenu ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+            >
+              {speed}x
+            </button>
+          </div>
         </div>
       </footer>
     </div>
