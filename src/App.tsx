@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Pause, Square, Settings, Link2, Loader2 } from 'lucide-react';
+import { Play, Pause, Square, Settings, Link2, Loader2, X } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
 function App() {
@@ -224,9 +224,18 @@ function App() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="Dán URL Google Docs/Truyện..."
-                className="w-full pl-10 pr-4 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-10 pr-10 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
                 onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
               />
+              {url && (
+                <button
+                  onClick={() => setUrl('')}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
+                  title="Xóa URL"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
             </div>
             <button 
               onClick={fetchContent}
