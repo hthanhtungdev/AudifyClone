@@ -443,7 +443,7 @@ function App() {
 
         <div className="w-full max-w-3xl mb-32 lg:mb-10 px-2 lg:px-4">
           {content ? (
-            <div className="text-base leading-[1.8] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
+            <div className="text-base leading-[1.6] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
               {/* Render content with HTML paragraphs and highlighting */}
               {(() => {
                 let globalIndex = 0;
@@ -459,11 +459,12 @@ function App() {
                         const startIndex = globalIndex;
                         const isHighlighted = highlightCharIndex >= startIndex && highlightCharIndex < startIndex + part.length;
                         globalIndex += part.length;
+                        const isWhitespace = /^\s+$/.test(part);
                         return (
                           <span
                             key={i}
                             onClick={() => playFromStart(startIndex)}
-                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded px-0.5 ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
+                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded ${!isWhitespace ? "px-0.5" : "px-0"} ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
                             data-highlight={isHighlighted ? "true" : "false"}
                           >
                             {part}
@@ -508,25 +509,26 @@ function App() {
 
 
       {/* Media Controller */}
-      <footer className="bg-gray-900 border-t border-gray-800 p-4 pb-8 fixed bottom-0 left-0 right-0 z-10 lg:static">
-        <div className="max-w-md mx-auto flex items-center justify-between px-6">
+      <footer className="bg-gray-900 border-t border-gray-800 p-3 pb-6 fixed bottom-0 left-0 right-0 z-10 lg:static">
+        <div className="max-w-md mx-auto flex items-center justify-between px-4">
           <button
             onClick={handleStop}
-            className="p-4 rounded-full bg-gray-800 hover:bg-gray-700 transition-transform active:scale-95 text-gray-300"
+            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 transition-transform active:scale-95 text-gray-300"
           >
-            <Square className="w-6 h-6 fill-current" />
+            <Square className="w-5 h-5 fill-current" />
           </button>
 
           <button
             onClick={handlePlayPause}
-            className="p-6 rounded-full bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-transform active:scale-95 text-white mx-4"
+            className="p-4 rounded-full bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-transform active:scale-95 text-white mx-4"
           >
             {isPlaying ? (
-              <Pause className="w-10 h-10 fill-current" />
+              <Pause className="w-8 h-8 fill-current" />
             ) : (
-              <Play className="w-10 h-10 fill-current ml-1" />
+              <Play className="w-8 h-8 fill-current ml-1" />
             )}
           </button>
+
 
           <div className="relative">
             {showSpeedMenu && (
@@ -599,7 +601,7 @@ function App() {
                 if (!showSpeedMenu && isPlaying) handlePause();
                 setShowSpeedMenu(!showSpeedMenu);
               }}
-              className={`p-4 rounded-full transition-colors active:scale-95 font-bold w-16 text-center ${showSpeedMenu ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+              className={`p-3 rounded-xl transition-colors active:scale-95 font-bold w-14 text-center ${showSpeedMenu ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
             >
               {Number(speed.toFixed(2))}x
             </button>
