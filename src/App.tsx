@@ -422,7 +422,7 @@ function App() {
               <option value={GOOGLE_TTS_ID}>Google Trực tuyến (Giọng chuẩn ⚡)</option>
             </select>
             <p className="text-xs text-gray-500 italic">
-              Lưu ý: Nếu không thấy giọng tiếng Việt, hãy vào Cài đặt iPhone &rarr; Trợ năng &rarr; Nội dung được đọc &rarr; Giọng nói để tải về.
+              Lưu ý: Nếu không thấy giọng tiếng Việt, hãy kiểm tra cài đặt Giọng nói/Trợ năng trên thiết bị của bạn (Ví dụ: Cài đặt &rarr; Giọng nói trên iOS hoặc Google TTS trên Android/PC).
             </p>
           </div>
         </div>
@@ -430,7 +430,7 @@ function App() {
 
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto p-4 flex flex-col items-center"
+        className="flex-1 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar"
         onScroll={handleScroll}
         onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
