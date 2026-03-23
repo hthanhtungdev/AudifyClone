@@ -113,10 +113,9 @@ function App() {
 
   const handlePlayPause = () => {
     if (isPlaying) {
-      window.speechSynthesis.pause();
-      setIsPlaying(false);
+      handlePause();
     } else {
-      setIsAutoScrollEnabled(true); // Bật lại cuộn khi nhấn Play
+      setIsAutoScrollEnabled(true);
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
         setIsPlaying(true);
@@ -187,6 +186,7 @@ function App() {
       }
     };
 
+    window.speechSynthesis.speak(utterance);
     setIsPlaying(true);
   };
 
@@ -402,7 +402,7 @@ function App() {
 
         <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2 lg:px-4">
           {content ? (
-            <div className="text-base leading-[1.8] tracking-tight text-gray-300 font-serif pb-10">
+            <div className="text-base leading-[1.8] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
               {/* Render content with HTML paragraphs and highlighting */}
               {(() => {
                 let globalIndex = 0;
