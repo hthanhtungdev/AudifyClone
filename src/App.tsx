@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+
 import { Play, Pause, Square, Settings, Link2, Loader2, X, Plus, Minus } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
@@ -14,6 +15,11 @@ function App() {
   const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+
+  const GOOGLE_TTS_ID = 'google_v_online';
+  const googleAudioRef = useRef<HTMLAudioElement | null>(null);
+
+
 
 
   // Sync state with localStorage
@@ -45,7 +51,7 @@ function App() {
       if (!selectedVoiceName && vnVoices.length > 0) {
         const bestVoice = vnVoices.find(v => {
           const vVal = (v.name + v.voiceURI).toLowerCase();
-          return vVal.includes('premium') || vVal.includes('enhanced') || v.voiceURI.includes('premium');
+          return vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
         }) || vnVoices[0];
         if (bestVoice) setSelectedVoiceName(bestVoice.voiceURI);
       }
@@ -122,6 +128,10 @@ function App() {
 
   const handlePause = () => {
     window.speechSynthesis.cancel();
+    if (googleAudioRef.current) {
+      googleAudioRef.current.pause();
+      googleAudioRef.current = null;
+    }
     setIsPlaying(false);
   };
 
@@ -135,11 +145,16 @@ function App() {
   const playFromStart = (startIndex: number = 0) => {
     if (!content) return;
     setIsAutoScrollEnabled(true); // Bật lại cuộn khi chọn từ mới
+    if (selectedVoiceName === GOOGLE_TTS_ID) {
+      handlePlayGoogleOnline(startIndex);
+      return;
+    }
+    
     window.speechSynthesis.cancel();
 
-    // Nếu đọc từ giữa đoạn, lấy phần content từ startIndex
     const textToSpeak = content.slice(startIndex);
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
+
 
     const currentVoices = window.speechSynthesis.getVoices();
     const voice = currentVoices.find(v => v.voiceURI === selectedVoiceName) ||
@@ -172,8 +187,60 @@ function App() {
       }
     };
 
-    window.speechSynthesis.speak(utterance);
     setIsPlaying(true);
+  };
+
+  const handlePlayGoogleOnline = (startIndex: number) => {
+    window.speechSynthesis.cancel();
+    if (googleAudioRef.current) {
+      googleAudioRef.current.pause();
+      googleAudioRef.current = null;
+    }
+    setIsPlaying(true);
+
+    
+    // Tách văn bản thành các đoạn nhỏ dưới 200 ký tự (giới hạn Google TTS)
+    const text = content.slice(startIndex);
+    const chunks = text.match(/[^.!?\s][^.!?]*[.!?]?/g) || [text];
+    
+    let currentChunkIndex = 0;
+    let accumulatedChars = startIndex;
+
+    const playNextChunk = () => {
+      if (currentChunkIndex >= chunks.length || !isPlaying) {
+        setIsPlaying(false);
+        googleAudioRef.current = null;
+        return;
+      }
+
+      const chunk = chunks[currentChunkIndex];
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+      
+      const audio = new Audio(ttsUrl);
+      googleAudioRef.current = audio;
+      audio.playbackRate = speed;
+      
+      audio.onplay = () => {
+        setHighlightCharIndex(accumulatedChars);
+      };
+
+      audio.onended = () => {
+        accumulatedChars += chunk.length;
+        currentChunkIndex++;
+        if (googleAudioRef.current === audio) {
+          playNextChunk();
+        }
+      };
+
+      audio.onerror = () => {
+        setIsPlaying(false);
+        googleAudioRef.current = null;
+      };
+
+      audio.play();
+    };
+
+    playNextChunk();
   };
 
   // Heartbeat để tránh Chrome tự động dừng nói sau 15s (lỗi Web Speech API)
@@ -203,6 +270,10 @@ function App() {
 
   const handleStop = () => {
     window.speechSynthesis.cancel();
+    if (googleAudioRef.current) {
+      googleAudioRef.current.pause();
+      googleAudioRef.current = null;
+    }
     setIsPlaying(false);
     setHighlightCharIndex(-1);
   };
@@ -243,28 +314,45 @@ function App() {
                   const bVal = (b.name + b.voiceURI).toLowerCase();
 
                   // Logic nhận diện giọng cao cấp cho cả iOS và Desktop
-                  const aEnhanced = aVal.includes('premium') || aVal.includes('enhanced') || a.voiceURI.includes('premium');
-                  const bEnhanced = bVal.includes('premium') || bVal.includes('enhanced') || b.voiceURI.includes('premium');
+                  const hasAKeyword = aVal.includes('premium') || aVal.includes('enhanced') || aVal.includes('hq') || aVal.includes('high');
+                  const hasBKeyword = bVal.includes('premium') || bVal.includes('enhanced') || bVal.includes('hq') || bVal.includes('high');
 
                   // Nếu cùng tên (trường hợp iOS Linh/Linh), ưu tiên cái có URI dài hơn hoặc có premium
                   if (a.name === b.name) {
-                    if (aEnhanced && !bEnhanced) return -1;
-                    if (!aEnhanced && bEnhanced) return 1;
+                    if (hasAKeyword && !hasBKeyword) return -1;
+                    if (!hasAKeyword && hasBKeyword) return 1;
                     return b.voiceURI.length - a.voiceURI.length;
                   }
 
-                  return (bEnhanced ? 1 : 0) - (aEnhanced ? 1 : 0);
+                  return (hasBKeyword ? 1 : 0) - (hasAKeyword ? 1 : 0);
                 })
-                .map(v => {
+                .map((v, idx) => {
                   const vVal = (v.name + v.voiceURI).toLowerCase();
-                  const isEnhanced = vVal.includes('premium') || vVal.includes('enhanced') || v.voiceURI.includes('premium');
+                  const hasKeyword = vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
+                  
+                  const otherVoicesWithSameName = voices.filter(ov => ov.name === v.name && ov.voiceURI !== v.voiceURI);
+                  let isEnhanced = hasKeyword;
+                  
+                  if (!isEnhanced && otherVoicesWithSameName.length > 0) {
+                    const isLongestOrKeyworded = otherVoicesWithSameName.every(ov => {
+                      const ovVal = (ov.name + ov.voiceURI).toLowerCase();
+                      const hasOtherKeyword = ovVal.includes('premium') || ovVal.includes('enhanced') || ovVal.includes('hq') || ovVal.includes('high');
+                      return !hasOtherKeyword && v.voiceURI.length >= ov.voiceURI.length;
+                    });
+                    if (isLongestOrKeyworded) isEnhanced = true;
+                  }
+
+                  const cleanName = v.name.replace('Microsoft', '').replace('Google', '').trim();
+
                   return (
                     <option key={v.voiceURI} value={v.voiceURI}>
-                      {v.name.replace('Microsoft', '').replace('Google', '').trim()}
+                      {cleanName} 
                       {isEnhanced ? ' (Nâng cao ✨)' : ''}
+                      {!isEnhanced && otherVoicesWithSameName.length > 0 ? ` (#${idx + 1})` : ''}
                     </option>
                   );
                 })}
+              <option value={GOOGLE_TTS_ID}>Google Trực tuyến (Giọng chuẩn ⚡)</option>
             </select>
             <p className="text-xs text-gray-500 italic">
               Lưu ý: Nếu không thấy giọng tiếng Việt, hãy vào Cài đặt iPhone &rarr; Trợ năng &rarr; Nội dung được đọc &rarr; Giọng nói để tải về.
