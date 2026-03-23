@@ -150,6 +150,20 @@ function App() {
   const playFromStart = (startIndex: number = 0) => {
     if (!content) return;
     setIsAutoScrollEnabled(true); // Bật lại cuộn khi chọn từ mới
+    
+    // Thực hiện nhảy đến từ mới lập tức (instant) để tránh jitter trên iPhone
+    if (mainContentRef.current) {
+      const activeElement = document.querySelector(`span[onClick*="playFromStart(${startIndex})"]`) as HTMLElement || 
+                          document.querySelector(`[data-highlight="true"]`) as HTMLElement;
+      if (activeElement) {
+        const container = mainContentRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = activeElement.getBoundingClientRect();
+        const contentTop = container.scrollTop + (elementRect.top - containerRect.top);
+        container.scrollTo({ top: contentTop - 120, behavior: 'auto' });
+      }
+    }
+
     if (selectedVoiceName === GOOGLE_TTS_ID) {
       handlePlayGoogleOnline(startIndex);
       return;
@@ -261,38 +275,38 @@ function App() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Tối ưu cuộn tự động (Comfort Zone + Throttle) - Sửa lỗi nhảy giật trên iPhone
+  // Tối ưu cuộn tự động (Comfort Zone V6) - Sửa triệt để lỗi nhảy giật/oscillation trên iPhone
   const lastScrollTime = useRef(0);
+  const isScrollingToRef = useRef(false);
+
   useEffect(() => {
     if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
       const now = Date.now();
-      if (now - lastScrollTime.current < 800) return; // Throttle 800ms để tránh tranh chấp animation
+      // Throttle mạnh hơn để tránh animation chồng chéo
+      if (now - lastScrollTime.current < 1500) return; 
 
       const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
-        
-        // Tính toán khoảng cách thật của phần tử so với container cha
-        // offsetTop của span có thể không chính xác do nó nằm trong p, h, v.v.
-        // Cần tính tổng offsetTop lên đến mainContentRef
-        let actualTop = 0;
-        let curr: HTMLElement | null = activeElement;
-        while (curr && curr !== container) {
-          actualTop += curr.offsetTop;
-          curr = curr.offsetParent as HTMLElement;
-        }
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = activeElement.getBoundingClientRect();
+        const relativeTop = elementRect.top - containerRect.top;
 
-        const currentScroll = container.scrollTop;
-        const relativeTop = actualTop - currentScroll;
-
-        // "Vùng an toàn" (60px - 200px từ trên xuống)
-        if (relativeTop < 60 || relativeTop > 200) {
-          const targetScrollTop = actualTop - 100;
+        // CHỈ CUỘN KHI highlight xuống quá thấp (> 300px) hoặc quá cao (< 50px)
+        // Dùng bước cuộn lớn (Large Step) để giảm số lần gọi animate
+        if (relativeTop > 300 || relativeTop < 50) {
+          const contentTop = container.scrollTop + (elementRect.top - containerRect.top);
+          const target = contentTop - 120;
+          
+          isScrollingToRef.current = true;
           container.scrollTo({
-            top: targetScrollTop,
+            top: target,
             behavior: 'smooth'
           });
+          
           lastScrollTime.current = now;
+          // Tự động gỡ lock sau 1s (thời gian animation)
+          setTimeout(() => { isScrollingToRef.current = false; }, 1000);
         }
       }
     }
