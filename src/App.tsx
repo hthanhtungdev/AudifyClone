@@ -340,33 +340,47 @@ function App() {
           <div className="max-w-2xl mx-auto flex flex-col gap-3">
             <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
             <select
-              value={selectedVoiceName}
-              onChange={(e) => setSelectedVoiceName(e.target.value)}
+              value={(() => {
+                if (selectedVoiceName === GOOGLE_TTS_ID) return GOOGLE_TTS_ID;
+                if (!selectedVoiceName) return "";
+                const foundIdx = voices.findIndex(v => v.voiceURI === selectedVoiceName);
+                return foundIdx !== -1 ? `${selectedVoiceName}|${foundIdx}` : selectedVoiceName;
+              })()}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === GOOGLE_TTS_ID) {
+                  setSelectedVoiceName(GOOGLE_TTS_ID);
+                } else if (!val) {
+                  setSelectedVoiceName("");
+                } else {
+                  setSelectedVoiceName(val.split('|')[0]);
+                }
+              }}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none"
             >
-              {voices
+              {/* Hiển thị danh sách giọng đọc */}
+              <option value="">-- Mặc định thiết bị --</option>
+              {[...voices]
+                .map((v, originalIdx) => ({ v, originalIdx }))
                 .sort((a, b) => {
-                  const aVal = (a.name + a.voiceURI).toLowerCase();
-                  const bVal = (b.name + b.voiceURI).toLowerCase();
-
-                  // Logic nhận diện giọng cao cấp cho cả iOS và Desktop
+                  const aVal = (a.v.name + a.v.voiceURI).toLowerCase();
+                  const bVal = (b.v.name + b.v.voiceURI).toLowerCase();
                   const hasAKeyword = aVal.includes('premium') || aVal.includes('enhanced') || aVal.includes('hq') || aVal.includes('high');
                   const hasBKeyword = bVal.includes('premium') || bVal.includes('enhanced') || bVal.includes('hq') || bVal.includes('high');
 
-                  // Nếu cùng tên (trường hợp iOS Linh/Linh), ưu tiên cái có URI dài hơn hoặc có premium
-                  if (a.name === b.name) {
+                  if (a.v.name === b.v.name) {
                     if (hasAKeyword && !hasBKeyword) return -1;
                     if (!hasAKeyword && hasBKeyword) return 1;
-                    return b.voiceURI.length - a.voiceURI.length;
+                    return b.v.voiceURI.length - a.v.voiceURI.length;
                   }
-
                   return (hasBKeyword ? 1 : 0) - (hasAKeyword ? 1 : 0);
                 })
-                .map((v, idx) => {
+                .map((item, sortedIdx) => {
+                  const v = item.v;
                   const vVal = (v.name + v.voiceURI).toLowerCase();
                   const hasKeyword = vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
                   
-                  const otherVoicesWithSameName = voices.filter(ov => ov.name === v.name && ov.voiceURI !== v.voiceURI);
+                  const otherVoicesWithSameName = voices.filter((ov, oIdx) => ov.name === v.name && oIdx !== item.originalIdx);
                   let isEnhanced = hasKeyword;
                   
                   if (!isEnhanced && otherVoicesWithSameName.length > 0) {
@@ -381,10 +395,10 @@ function App() {
                   const cleanName = v.name.replace('Microsoft', '').replace('Google', '').trim();
 
                   return (
-                    <option key={v.voiceURI} value={v.voiceURI}>
+                    <option key={`${v.voiceURI}-${item.originalIdx}`} value={`${v.voiceURI}|${item.originalIdx}`}>
                       {cleanName} 
                       {isEnhanced ? ' (Nâng cao ✨)' : ''}
-                      {!isEnhanced && otherVoicesWithSameName.length > 0 ? ` (#${idx + 1})` : ''}
+                      {!isEnhanced && otherVoicesWithSameName.length > 0 ? ` (#${sortedIdx + 1})` : ''}
                     </option>
                   );
                 })}
