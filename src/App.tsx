@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, Pause, Square, Settings, Link2, Loader2 } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
