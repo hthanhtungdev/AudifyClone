@@ -247,9 +247,9 @@ function App() {
           </div>
         </div>
 
-        <div className="w-full max-w-2xl flex-1 bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-2xl overflow-y-auto mb-32 lg:mb-10">
+        <div className="w-full max-w-3xl flex-1 overflow-y-auto mb-32 lg:mb-10 px-2">
           {content ? (
-            <div className="text-xl leading-loose text-gray-300 font-serif whitespace-pre-line break-words pb-10">
+            <div className="text-lg leading-loose text-gray-300 font-serif whitespace-pre-line break-words pb-10">
               {/* Render content with highlighting */}
               {content.split(/(\s+)/).reduce((acc: any[], part, i) => {
                 const prevLength = acc.reduce((sum, item) => sum + (item.props ? item.props.children.length : 0), 0);
