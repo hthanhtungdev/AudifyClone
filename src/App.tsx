@@ -407,30 +407,19 @@ function App() {
                   }
                   return (hasBKeyword ? 1 : 0) - (hasAKeyword ? 1 : 0);
                 })
-                .map((item, sortedIdx) => {
+                .map((item) => {
                   const v = item.v;
-                  const vVal = (v.name + v.voiceURI).toLowerCase();
-                  const hasKeyword = vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
-                  
-                  const otherVoicesWithSameName = voices.filter((ov, oIdx) => ov.name === v.name && oIdx !== item.originalIdx);
-                  let isEnhanced = hasKeyword;
-                  
-                  if (!isEnhanced && otherVoicesWithSameName.length > 0) {
-                    const isLongestOrKeyworded = otherVoicesWithSameName.every(ov => {
-                      const ovVal = (ov.name + ov.voiceURI).toLowerCase();
-                      const hasOtherKeyword = ovVal.includes('premium') || ovVal.includes('enhanced') || ovVal.includes('hq') || ovVal.includes('high');
-                      return !hasOtherKeyword && v.voiceURI.length >= ov.voiceURI.length;
-                    });
-                    if (isLongestOrKeyworded) isEnhanced = true;
-                  }
-
-                  const cleanName = v.name.replace('Microsoft', '').replace('Google', '').trim();
+                  // Giữ nguyên tên gốc nhưng làm sạch tiền tố và Việt hóa nhãn kỹ thuật
+                  let displayName = v.name
+                    .replace('Microsoft ', '')
+                    .replace('Google ', '')
+                    .replace(/\(Enhanced\)/i, '(Nâng cao)')
+                    .replace(/\(Premium\)/i, '(Nâng cao ✨)')
+                    .trim();
 
                   return (
                     <option key={`${v.voiceURI}-${item.originalIdx}`} value={`${v.voiceURI}|${item.originalIdx}`}>
-                      {cleanName} 
-                      {isEnhanced ? ' (Nâng cao ✨)' : ''}
-                      {!isEnhanced && otherVoicesWithSameName.length > 0 ? ` (#${sortedIdx + 1})` : ''}
+                      {displayName}
                     </option>
                   );
                 })}
