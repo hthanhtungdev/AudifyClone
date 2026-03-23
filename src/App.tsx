@@ -261,20 +261,31 @@ function App() {
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Cuộn tự động đến đoạn đang highlight
+  // Tối ưu cuộn tự động (Comfort Zone + Throttle)
+  const lastScrollTime = useRef(0);
   useEffect(() => {
     if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
+      const now = Date.now();
+      if (now - lastScrollTime.current < 500) return; // Throttle 500ms
+
       const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
-        const targetScrollTop = activeElement.offsetTop - 80;
+        const containerRect = container.getBoundingClientRect();
+        const elementRect = activeElement.getBoundingClientRect();
         
-        // Chỉ cuộn nếu khoảng cách hiện tại khác xa mục tiêu (tránh nhảy liên tục)
-        if (Math.abs(container.scrollTop - targetScrollTop) > 20) {
+        // Vị trí của phần tử so với mép trên của vùng chứa
+        const relativeTop = elementRect.top - containerRect.top;
+
+        // "Vùng an toàn" (60px - 180px từ trên xuống)
+        // Nếu nằm trong vùng này thì KHÔNG CUỘN để tránh màn hình bị giật liên tục
+        if (relativeTop < 60 || relativeTop > 180) {
+          const targetScrollTop = container.scrollTop + relativeTop - 100;
           container.scrollTo({
             top: targetScrollTop,
             behavior: 'smooth'
           });
+          lastScrollTime.current = now;
         }
       }
     }
