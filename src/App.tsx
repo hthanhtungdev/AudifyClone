@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-import { Play, Pause, Square, Settings, Link2, Loader2, X, Plus, Minus } from 'lucide-react';
+import { Play, Pause, Square, Settings, Link2, Loader2, X, Plus, Minus, HelpCircle } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
 function App() {
@@ -22,10 +22,13 @@ function App() {
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [showHeader, setShowHeader] = useState(true);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showVoiceGuide, setShowVoiceGuide] = useState(false);
 
 
   const GOOGLE_TTS_ID = 'google_v_online';
+  const GOOGLE_TTS_ID_2 = 'google_v_online_2';
   const googleAudioRef = useRef<HTMLAudioElement | null>(null);
+  const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastScrollY = useRef(0);
   const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -154,21 +157,30 @@ function App() {
 
   const playFromStart = (startIndex: number = 0) => {
     if (!content) return;
-    setIsAutoScrollEnabled(true); // Bật lại cuộn khi chọn từ mới
+    setIsAutoScrollEnabled(true); 
 
-    // BẮT BUỘC: Mở khóa Audio trên iOS ngay tại đây (trong callback sự kiện click/tap)
+    // Tự động tìm vị trí đầu đoạn văn (Paragraph Start)
+    let paragraphStartIndex = content.lastIndexOf('\n', startIndex - 1);
+    paragraphStartIndex = paragraphStartIndex === -1 ? 0 : paragraphStartIndex + 1;
+    
+    // Sử dụng vị trí đầu đoạn để bắt đầu đọc
+    const actualStartIndex = paragraphStartIndex;
+
+    // Rung nhẹ phản hồi (Haptic peak) nếu thiết bị hỗ trợ
+    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(10);
+    }
+
+    // Mở khóa Audio trên iOS ngay lập tức
     const wakeUp = new SpeechSynthesisUtterance("");
     window.speechSynthesis.speak(wakeUp);
-    if (googleAudioRef.current) {
-      googleAudioRef.current.play().then(() => {
-        // Chỉ pause nếu lúc này trạng thái thực không phải đang phát
-        if (!isPlayingRef.current && selectedVoiceName !== GOOGLE_TTS_ID) {
-          googleAudioRef.current?.pause();
-        }
-      }).catch(() => {});
+
+    if (googleAudioRef.current && (selectedVoiceName === GOOGLE_TTS_ID || selectedVoiceName === GOOGLE_TTS_ID_2)) {
+      // Chỉ play để unlock nếu đang dùng Online voice, nhưng KHÔNG pause lại ngay lập tức nếu đang phát
+      googleAudioRef.current.play().catch(() => {});
     }
     
-    // Nhảy tới từ mới lập tức (instant) để tránh jitter trên iPhone
+    // Nhảy tới từ mới lập tức
     if (mainContentRef.current) {
       const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement;
       if (activeElement) {
@@ -180,14 +192,14 @@ function App() {
       }
     }
 
-    if (selectedVoiceName === GOOGLE_TTS_ID) {
-      handlePlayGoogleOnline(startIndex);
+    if (selectedVoiceName === GOOGLE_TTS_ID || selectedVoiceName === GOOGLE_TTS_ID_2) {
+      handlePlayGoogleOnline(actualStartIndex);
       return;
     }
     
     window.speechSynthesis.cancel();
 
-    const textToSpeak = content.slice(startIndex);
+    const textToSpeak = content.slice(actualStartIndex);
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
 
 
@@ -228,18 +240,18 @@ function App() {
     // Theo dõi vị trí đang đọc để highlight
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
-        // Cộng thêm startIndex để highlight đúng vị trí trong content gốc
-        setHighlightCharIndex(event.charIndex + startIndex);
+        // Cộng thêm actualStartIndex để highlight đúng vị trí trong content gốc
+        setHighlightCharIndex(event.charIndex + actualStartIndex);
       }
     };
 
-    // Debounce cancel/speak cho iOS Safari để không bị "mất hút"
+    // Debounce cancel/speak cực thấp để phản hồi ngay lập tức
     setTimeout(() => {
-      if (isPlayingRef.current || startIndex > 0) { // Check lại nếu chưa bị stop
+      if (isPlayingRef.current || startIndex > 0) { 
         window.speechSynthesis.speak(utterance);
         setIsPlaying(true);
       }
-    }, 50);
+    }, 10);
   };
 
   const handlePlayGoogleOnline = (startIndex: number) => {
@@ -267,11 +279,9 @@ function App() {
     let currentChunkIndex = 0;
     let accumulatedChars = startIndex;
     
-    // Unlock Audio on iOS: Cần phát một đoạn âm thanh trống hoặc pause/play ngay trong callback click
+    // KHÔNG pause ở đây để tránh interrupt iOS
     if (googleAudioRef.current) {
-      googleAudioRef.current.play().then(() => {
-        if (!isPlayingRef.current) googleAudioRef.current?.pause();
-      }).catch(() => {});
+      googleAudioRef.current.play().catch(() => {});
     }
 
     const playNextChunk = () => {
@@ -287,7 +297,8 @@ function App() {
         return;
       }
       
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+      const tl = selectedVoiceName === GOOGLE_TTS_ID_2 ? 'vi-VN' : 'vi';
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tl}&client=tw-ob`;
       const proxiedUrl = `/api/proxy?url=${encodeURIComponent(ttsUrl)}`;
 
       audio.onplay = null;
@@ -307,7 +318,12 @@ function App() {
       };
 
       // Giả lập highlight từng từ dựa trên tiến trình phát của file Audio
+      let lastUpdate = 0;
       audio.ontimeupdate = () => {
+        const now = Date.now();
+        if (now - lastUpdate < 100) return; // Chỉ cập nhật highlight mỗi 100ms để tránh giật (smooth performance)
+        lastUpdate = now;
+
         if (!audio.duration || !isPlayingRef.current) return;
         
         const progress = audio.currentTime / audio.duration;
@@ -319,6 +335,14 @@ function App() {
         
         setHighlightCharIndex(accumulatedChars + wordStart);
       };
+
+      // Tải trước (Pre-fetch) đoạn tiếp theo để tránh khựng
+      if (currentChunkIndex + 1 < chunks.length && prefetchAudioRef.current) {
+        const nextChunk = chunks[currentChunkIndex + 1];
+        const nextTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(nextChunk)}&tl=${tl}&client=tw-ob`;
+        prefetchAudioRef.current.src = `/api/proxy?url=${encodeURIComponent(nextTtsUrl)}`;
+        prefetchAudioRef.current.load();
+      }
 
       audio.onended = () => {
         const nextCharIndex = content.indexOf(chunk, accumulatedChars) + chunk.length;
@@ -444,81 +468,115 @@ function App() {
 
 
       {showSettings && (
-        <div className="p-4 bg-gray-900 border-b border-gray-800 animate-in slide-in-from-top duration-200">
+        <div className="p-3 bg-gray-900 border-b border-gray-800 animate-in slide-in-from-top duration-200">
           <div className="max-w-2xl mx-auto flex flex-col gap-3">
-            <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
+              <button 
+                onClick={() => setShowVoiceGuide(true)}
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                Làm sao để có thêm giọng nữ?
+              </button>
+            </div>
             <select
               value={selectedVoiceName}
               onChange={(e) => setSelectedVoiceName(e.target.value)}
-              className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none"
+              className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none text-sm"
             >
-              {/* Hiển thị danh sách giọng đọc */}
               <option value="">-- Mặc định thiết bị --</option>
+              <option value={GOOGLE_TTS_ID}>Google Trực tuyến (Giọng chuẩn ⚡)</option>
+              <option value={GOOGLE_TTS_ID_2}>Google Trực tuyến (Giọng 2 ✨)</option>
+              
               {[...voices]
-                .map((v, originalIdx) => ({ v, originalIdx }))
-                .sort((a, b) => {
-                  const aVal = (a.v.name + a.v.voiceURI).toLowerCase();
-                  const bVal = (b.v.name + b.v.voiceURI).toLowerCase();
-                  const hasAKeyword = aVal.includes('premium') || aVal.includes('enhanced') || aVal.includes('hq') || aVal.includes('high');
-                  const hasBKeyword = bVal.includes('premium') || bVal.includes('enhanced') || bVal.includes('hq') || bVal.includes('high');
-
-                  if (a.v.name === b.v.name) {
-                    if (hasAKeyword && !hasBKeyword) return -1;
-                    if (!hasAKeyword && hasBKeyword) return 1;
-                    return b.v.voiceURI.length - a.v.voiceURI.length;
-                  }
-                  return (hasBKeyword ? 1 : 0) - (hasAKeyword ? 1 : 0);
-                })
-                .map((item) => {
-                  const v = item.v;
+                .filter(v => !v.name.includes('Google') && !v.name.includes('Microsoft Online'))
+                .map((v, originalIdx) => {
+                  const vVal = (v.name + v.voiceURI).toLowerCase();
+                  const isPremium = vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
                   
-                  // Lấy tên gốc
                   let displayName = v.name
                     .replace('Microsoft ', '')
-                    .replace('Google ', '')
-                    .replace(/\(Enhanced\)/i, '(Nâng cao)')
-                    .replace(/\(Premium\)/i, '(Nâng cao ✨)')
+                    .replace(/\(Enhanced\)/i, '')
+                    .replace(/\(Premium\)/i, '')
                     .trim();
 
-                  // Rất nhiều trường hợp trên iOS Safari, tiếng Việt "Linh (Nâng cao)" 
-                  // chỉ có .name là "Linh", nhưng .voiceURI lại chứa "premium" hoặc "enhanced"
-                  const vVal = (v.name + v.voiceURI).toLowerCase();
-                  const isHiddenPremium = (vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq')) 
-                                          && !displayName.includes('Nâng cao');
-                  
-                  if (isHiddenPremium) {
+                  if (isPremium) {
                     displayName += ' (Nâng cao ✨)';
                   }
 
-                  // Xử lý nếu vẫn trùng lặp (ví dụ 2 giọng đều là "Linh" thường)
-                  const otherVoicesWithSameName = voices.filter((ov, oIdx) => {
-                    const ovDisplayName = ov.name.replace('Microsoft ', '').replace('Google ', '').replace(/\(Enhanced\)/i, '(Nâng cao)').replace(/\(Premium\)/i, '(Nâng cao ✨)').trim() + 
-                      ((ov.name + ov.voiceURI).toLowerCase().includes('premium') || (ov.name + ov.voiceURI).toLowerCase().includes('enhanced') || (ov.name + ov.voiceURI).toLowerCase().includes('hq') && !ov.name.includes('Nâng cao') ? ' (Nâng cao ✨)' : '');
-                    return ovDisplayName === displayName && oIdx !== item.originalIdx;
-                  });
-
-                  // Nếu có tên trùng hoàn toàn (kể cả sau khi đã thêm nhãn Nâng cao) thì đánh số
-                  if (otherVoicesWithSameName.length > 0) {
-                    // Đếm xem nó là giọng thứ mấy mang tên này
-                    const sameNameVoices = voices.filter(ov => {
-                       const ovName = ov.name.replace('Microsoft ', '').replace('Google ', '').replace(/\(Enhanced\)/i, '(Nâng cao)').replace(/\(Premium\)/i, '(Nâng cao ✨)').trim() + ((ov.name + ov.voiceURI).toLowerCase().includes('premium') || (ov.name + ov.voiceURI).toLowerCase().includes('enhanced') || (ov.name + ov.voiceURI).toLowerCase().includes('hq') && !ov.name.includes('Nâng cao') ? ' (Nâng cao ✨)' : '');
-                       return ovName === displayName;
-                    });
-                    const orderIdx = sameNameVoices.findIndex(ov => ov === v) + 1;
-                    displayName += ` #${orderIdx}`;
-                  }
-
-                  return (
-                    <option key={`${v.voiceURI}-${item.originalIdx}`} value={`${v.voiceURI}|${item.originalIdx}`}>
-                      {displayName}
-                    </option>
-                  );
-                })}
-              <option value={GOOGLE_TTS_ID}>Google Trực tuyến (Giọng chuẩn ⚡)</option>
+                  return { v, displayName, isPremium, value: `${v.voiceURI}|${originalIdx}` };
+                })
+                .sort((a, b) => {
+                  if (a.isPremium && !b.isPremium) return -1;
+                  if (!a.isPremium && b.isPremium) return 1;
+                  return a.displayName.localeCompare(b.displayName);
+                })
+                .map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.displayName}
+                  </option>
+                ))
+              }
             </select>
-            <p className="text-xs text-gray-500 italic">
-              Lưu ý: Nếu không thấy giọng tiếng Việt, hãy kiểm tra cài đặt Giọng nói/Trợ năng trên thiết bị của bạn (Ví dụ: Cài đặt &rarr; Giọng nói trên iOS hoặc Google TTS trên Android/PC).
-            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Hướng dẫn thêm giọng đọc */}
+      {showVoiceGuide && (
+        <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowVoiceGuide(false)}>
+          <div 
+            className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-6">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <HelpCircle className="text-blue-500" />
+                Thêm giọng đọc nữ (Miễn phí)
+              </h3>
+              <button onClick={() => setShowVoiceGuide(false)} className="text-gray-500 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-gray-300 text-sm leading-relaxed">
+              <div className="bg-blue-900/20 border border-blue-800/50 p-3 rounded-xl text-blue-200 mb-4">
+                iOS có rất nhiều giọng đọc nữ "Nâng cao" cực hay mà Apple cung cấp miễn phí, bạn chỉ cần tải về một lần.
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="bg-gray-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                <p>Mở <b>Cài đặt</b> trên iPhone của bạn.</p>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="bg-gray-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                <p>Vào <b>Trợ năng</b> {'>'} <b>Nội dung được đọc</b> {'>'} <b>Giọng nói</b>.</p>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="bg-gray-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">3</div>
+                <p>Chọn <b>Tiếng Việt</b>. Ở đây bạn sẽ thấy Linh, Siri...</p>
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="bg-gray-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">4</div>
+                <p>Nhấn vào biểu tượng <b>Đám mây</b> để tải về bản "Nâng cao" hoặc "Premium".</p>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="bg-gray-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0">5</div>
+                <p>Quay lại app Audify, tải lại trang và chọn giọng mới có chữ <b>(Nâng cao ✨)</b>.</p>
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowVoiceGuide(false)}
+              className="w-full mt-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold transition-colors"
+            >
+              Đã hiểu!
+            </button>
           </div>
         </div>
       )}
@@ -543,7 +601,7 @@ function App() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="Dán URL Google Docs/Truyện..."
-                className="w-full pl-10 pr-10 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors"
+                className="w-full pl-10 pr-10 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors text-sm"
                 onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
               />
               {url && (
@@ -559,7 +617,7 @@ function App() {
             <button
               onClick={fetchContent}
               disabled={loading}
-              className="px-5 py-3 bg-blue-600 disabled:bg-blue-800 disabled:text-gray-400 hover:bg-blue-500 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2"
+              className="px-5 py-3 bg-blue-600 disabled:bg-blue-800 disabled:text-gray-400 hover:bg-blue-500 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2 text-sm"
             >
               {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Tải chữ"}
             </button>
@@ -572,26 +630,36 @@ function App() {
             <div className="text-base leading-[1.6] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
               {/* Render content with HTML paragraphs and highlighting */}
               {(() => {
-                let globalIndex = 0;
+                let currentGlobalIndex = 0;
                 return content.split(/([\r\n]+)/).map((segment, segIndex) => {
                   if (/^[\r\n]+$/.test(segment)) {
-                    globalIndex += segment.length;
+                    currentGlobalIndex += segment.length;
                     return null;
                   }
 
+                  const pStartIdx = currentGlobalIndex;
+                  const pEndIdx = pStartIdx + segment.length;
+                  const isParagraphActive = highlightCharIndex >= pStartIdx && highlightCharIndex < pEndIdx;
+
                   return (
-                    <p key={segIndex} className="mb-6 text-left whitespace-pre-wrap break-words">
+                    <p 
+                      key={segIndex} 
+                      className={`mb-6 text-left whitespace-pre-wrap break-words transition-all duration-300 rounded-r-xl ${isParagraphActive ? "bg-blue-600/10 border-l-4 border-blue-600 pl-4 py-2" : "border-l-4 border-transparent pl-4 py-2"}`}
+                    >
                       {segment.split(/(\s+)/).map((part, i) => {
-                        const startIndex = globalIndex;
-                        const isHighlighted = highlightCharIndex >= startIndex && highlightCharIndex < startIndex + part.length;
-                        globalIndex += part.length;
+                        const wordStartIdx = currentGlobalIndex;
+                        const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
+                        currentGlobalIndex += part.length;
                         const isWhitespace = /^\s+$/.test(part);
                         return (
                           <span
                             key={i}
-                            onDoubleClick={() => playFromStart(startIndex)}
-                            data-index={startIndex}
-                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded ${!isWhitespace ? "px-0.5" : "px-0"} ${isHighlighted ? "bg-blue-600 text-white" : ""}`}
+                            onClick={(e) => {
+                              if (e.detail > 2) return; 
+                              playFromStart(wordStartIdx);
+                            }}
+                            data-index={wordStartIdx}
+                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded select-none ${!isWhitespace ? "px-0.5" : "px-0"} ${isHighlighted ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.6)] font-bold" : ""}`}
                             data-highlight={isHighlighted ? "true" : "false"}
                           >
                             {part}
@@ -739,6 +807,7 @@ function App() {
       
       {/* Thẻ audio cố định trên DOM để bypass lỗi tự chạy (autoplay) trên iOS */}
       <audio ref={googleAudioRef} className="hidden" playsInline crossOrigin="anonymous" />
+      <audio ref={prefetchAudioRef} className="hidden" playsInline crossOrigin="anonymous" />
     </div>
   );
 }
