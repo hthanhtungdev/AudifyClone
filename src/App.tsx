@@ -55,11 +55,12 @@ function App() {
 
       // Tự động chọn giọng phù hợp nhất nếu chưa chọn
       if (!selectedVoiceName && vnVoices.length > 0) {
-        const bestVoice = vnVoices.find(v => {
+        const bestVoiceIdx = vnVoices.findIndex(v => {
           const vVal = (v.name + v.voiceURI).toLowerCase();
           return vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
-        }) || vnVoices[0];
-        if (bestVoice) setSelectedVoiceName(bestVoice.voiceURI);
+        });
+        const finalIdx = bestVoiceIdx !== -1 ? bestVoiceIdx : 0;
+        setSelectedVoiceName(`${vnVoices[finalIdx].voiceURI}|${finalIdx}`);
       }
     };
 
@@ -174,10 +175,21 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
 
 
-    const currentVoices = window.speechSynthesis.getVoices();
-    const voice = currentVoices.find(v => v.voiceURI === selectedVoiceName) ||
-      currentVoices.find(v => v.name === selectedVoiceName) ||
-      currentVoices.find(v => v.lang.includes('vi'));
+    const parts = selectedVoiceName.split('|');
+    const targetUri = parts[0];
+    const targetIdx = parts.length > 1 ? parseInt(parts[1], 10) : -1;
+
+    let voice: SpeechSynthesisVoice | undefined;
+    
+    // Tìm chính xác theo Index nếu có
+    if (targetIdx !== -1 && voices[targetIdx] && voices[targetIdx].voiceURI === targetUri) {
+      voice = voices[targetIdx];
+    } else {
+      // Fallback
+      voice = voices.find(v => v.voiceURI === targetUri) ||
+        voices.find(v => v.name === targetUri) ||
+        voices[0];
+    }
 
     if (voice) {
       utterance.voice = voice;
@@ -372,22 +384,8 @@ function App() {
           <div className="max-w-2xl mx-auto flex flex-col gap-3">
             <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
             <select
-              value={(() => {
-                if (selectedVoiceName === GOOGLE_TTS_ID) return GOOGLE_TTS_ID;
-                if (!selectedVoiceName) return "";
-                const foundIdx = voices.findIndex(v => v.voiceURI === selectedVoiceName);
-                return foundIdx !== -1 ? `${selectedVoiceName}|${foundIdx}` : selectedVoiceName;
-              })()}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val === GOOGLE_TTS_ID) {
-                  setSelectedVoiceName(GOOGLE_TTS_ID);
-                } else if (!val) {
-                  setSelectedVoiceName("");
-                } else {
-                  setSelectedVoiceName(val.split('|')[0]);
-                }
-              }}
+              value={selectedVoiceName}
+              onChange={(e) => setSelectedVoiceName(e.target.value)}
               className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none"
             >
               {/* Hiển thị danh sách giọng đọc */}
@@ -409,13 +407,42 @@ function App() {
                 })
                 .map((item) => {
                   const v = item.v;
-                  // Giữ nguyên tên gốc nhưng làm sạch tiền tố và Việt hóa nhãn kỹ thuật
+                  
+                  // Lấy tên gốc
                   let displayName = v.name
                     .replace('Microsoft ', '')
                     .replace('Google ', '')
                     .replace(/\(Enhanced\)/i, '(Nâng cao)')
                     .replace(/\(Premium\)/i, '(Nâng cao ✨)')
                     .trim();
+
+                  // Rất nhiều trường hợp trên iOS Safari, tiếng Việt "Linh (Nâng cao)" 
+                  // chỉ có .name là "Linh", nhưng .voiceURI lại chứa "premium" hoặc "enhanced"
+                  const vVal = (v.name + v.voiceURI).toLowerCase();
+                  const isHiddenPremium = (vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq')) 
+                                          && !displayName.includes('Nâng cao');
+                  
+                  if (isHiddenPremium) {
+                    displayName += ' (Nâng cao ✨)';
+                  }
+
+                  // Xử lý nếu vẫn trùng lặp (ví dụ 2 giọng đều là "Linh" thường)
+                  const otherVoicesWithSameName = voices.filter((ov, oIdx) => {
+                    const ovDisplayName = ov.name.replace('Microsoft ', '').replace('Google ', '').replace(/\(Enhanced\)/i, '(Nâng cao)').replace(/\(Premium\)/i, '(Nâng cao ✨)').trim() + 
+                      ((ov.name + ov.voiceURI).toLowerCase().includes('premium') || (ov.name + ov.voiceURI).toLowerCase().includes('enhanced') || (ov.name + ov.voiceURI).toLowerCase().includes('hq') && !ov.name.includes('Nâng cao') ? ' (Nâng cao ✨)' : '');
+                    return ovDisplayName === displayName && oIdx !== item.originalIdx;
+                  });
+
+                  // Nếu có tên trùng hoàn toàn (kể cả sau khi đã thêm nhãn Nâng cao) thì đánh số
+                  if (otherVoicesWithSameName.length > 0) {
+                    // Đếm xem nó là giọng thứ mấy mang tên này
+                    const sameNameVoices = voices.filter(ov => {
+                       const ovName = ov.name.replace('Microsoft ', '').replace('Google ', '').replace(/\(Enhanced\)/i, '(Nâng cao)').replace(/\(Premium\)/i, '(Nâng cao ✨)').trim() + ((ov.name + ov.voiceURI).toLowerCase().includes('premium') || (ov.name + ov.voiceURI).toLowerCase().includes('enhanced') || (ov.name + ov.voiceURI).toLowerCase().includes('hq') && !ov.name.includes('Nâng cao') ? ' (Nâng cao ✨)' : '');
+                       return ovName === displayName;
+                    });
+                    const orderIdx = sameNameVoices.findIndex(ov => ov === v) + 1;
+                    displayName += ` #${orderIdx}`;
+                  }
 
                   return (
                     <option key={`${v.voiceURI}-${item.originalIdx}`} value={`${v.voiceURI}|${item.originalIdx}`}>
