@@ -300,6 +300,7 @@ function App() {
     setHighlightCharIndex(startIndex); // Cập nhật tức thì
     setIsPlaying(true);
     const sessionId = ++currentSessionRef.current;
+    console.log(`[TTS] New Session: ${sessionId}, startIndex: ${startIndex}`);
 
     
     // Chia văn bản thành các đoạn nhỏ dưới 180 ký tự (Giới hạn của Google TTS)
@@ -324,6 +325,7 @@ function App() {
     
     // KHÔNG pause ở đây để tránh interrupt iOS
     if (googleAudioRef.current) {
+      console.log(`[TTS] Chunks count: ${chunks.length}`);
       googleAudioRef.current.play().catch(() => {});
     }
 
@@ -342,17 +344,23 @@ function App() {
         return;
       }
       
+      let retryCount = 0;
       const tl = selectedVoiceName === GOOGLE_TTS_ID_2 ? 'vi-VN' : 'vi';
       const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tl}&client=tw-ob`;
       const proxiedUrl = `/api/proxy?url=${encodeURIComponent(ttsUrl)}`;
 
+      console.log(`[TTS] Playing Chunk ${currentChunkIndex}: "${chunk.slice(0, 20)}..."`);
+
       audio.onplay = null;
+      audio.onplaying = null;
+      audio.onpause = null;
       audio.onended = null;
       audio.onerror = null;
       audio.ontimeupdate = null;
 
       audio.src = proxiedUrl;
       audio.playbackRate = speed;
+      audio.load(); // Đảm bảo nạp dữ liệu mới trên iOS
       
       audio.onplay = () => {
         if (sessionId !== currentSessionRef.current) return;
@@ -397,23 +405,33 @@ function App() {
 
       audio.onended = () => {
         if (sessionId !== currentSessionRef.current) return;
+        console.log(`[TTS] Chunk ${currentChunkIndex} ended, moving to next.`);
         accumulatedChars += chunk.length;
         currentChunkIndex++;
         playNextChunk();
       };
 
-      audio.onerror = () => {
+      audio.onerror = (e) => {
         if (sessionId !== currentSessionRef.current) return;
-        setIsPlaying(false);
+        console.error(`[TTS] ERROR at Chunk ${currentChunkIndex}`, e);
+        
+        if (retryCount < 1) {
+          retryCount++;
+          console.log(`[TTS] Retrying Chunk ${currentChunkIndex}... (Lần ${retryCount})`);
+          setTimeout(() => {
+            if (sessionId === currentSessionRef.current) audio.play().catch(() => {});
+          }, 1000);
+        } else {
+          console.warn(`[TTS] Skipping Chunk ${currentChunkIndex} due to repeated errors.`);
+          accumulatedChars += chunk.length;
+          currentChunkIndex++;
+          playNextChunk(); 
+        }
       };
 
-      audio.play().catch(() => {
-        if (sessionId === currentSessionRef.current) {
-            // Thử lại sau 1s nếu bị iOS chặn autoplay (rất hiếm khi đã có user interaction)
-            setTimeout(() => {
-                if (sessionId === currentSessionRef.current) audio.play().catch(() => setIsPlaying(false));
-            }, 1000);
-        }
+      audio.play().catch((err) => {
+        console.warn(`[TTS] Play Error (Autoplay?):`, err);
+        // audio.onerror sẽ xử lý việc retry/skip
       });
     };
 
