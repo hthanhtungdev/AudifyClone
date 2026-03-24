@@ -30,7 +30,7 @@ function App() {
   const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastScrollY = useRef(0);
   const mainContentRef = useRef<HTMLDivElement>(null);
-
+  const currentSessionRef = useRef(0);
 
 
 
@@ -152,6 +152,10 @@ function App() {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
       googleAudioRef.current.pause();
+      googleAudioRef.current.onended = null;
+      googleAudioRef.current.onerror = null;
+      googleAudioRef.current.onplay = null;
+      googleAudioRef.current.ontimeupdate = null;
     }
     if (prefetchAudioRef.current) {
       prefetchAudioRef.current.pause();
@@ -272,8 +276,8 @@ function App() {
 
   const handlePlayGoogleOnline = (startIndex: number) => {
     window.speechSynthesis.cancel();
-    // KHÔNG pause ở đây nếu vừa gọi play ở playFromStart để tránh interrupt iOS
     setIsPlaying(true);
+    const sessionId = ++currentSessionRef.current;
 
     
     // Chia văn bản thành các đoạn nhỏ dưới 180 ký tự (Giới hạn của Google TTS)
@@ -302,8 +306,10 @@ function App() {
     }
 
     const playNextChunk = () => {
+      if (sessionId !== currentSessionRef.current) return;
+
       if (currentChunkIndex >= chunks.length || !isPlayingRef.current) {
-        setIsPlaying(false);
+        if (sessionId === currentSessionRef.current) setIsPlaying(false);
         return;
       }
 
@@ -327,18 +333,16 @@ function App() {
       audio.playbackRate = speed;
       
       audio.onplay = () => {
-        if (!isPlayingRef.current) {
-          audio.pause();
-          return;
-        }
+        if (sessionId !== currentSessionRef.current) return;
         setHighlightCharIndex(accumulatedChars);
       };
 
       // Giả lập highlight từng từ dựa trên tiến trình phát của file Audio
       let lastUpdate = 0;
       audio.ontimeupdate = () => {
+        if (sessionId !== currentSessionRef.current) return;
         const now = Date.now();
-        if (now - lastUpdate < 100) return; // Chỉ cập nhật highlight mỗi 100ms để tránh giật (smooth performance)
+        if (now - lastUpdate < 100) return; 
         lastUpdate = now;
 
         if (!audio.duration || !isPlayingRef.current) return;
@@ -346,7 +350,6 @@ function App() {
         const progress = audio.currentTime / audio.duration;
         const charIndexInChunk = Math.floor(progress * chunk.length);
         
-        // Tìm vị trí bắt đầu của từ gần nhất để highlight không bị cắt nửa chừng
         const lastSpace = chunk.lastIndexOf(' ', charIndexInChunk);
         const wordStart = lastSpace === -1 ? 0 : lastSpace + 1;
         
@@ -362,18 +365,19 @@ function App() {
       }
 
       audio.onended = () => {
-        const nextCharIndex = content.indexOf(chunk, accumulatedChars) + chunk.length;
-        accumulatedChars = nextCharIndex;
+        if (sessionId !== currentSessionRef.current) return;
+        accumulatedChars += chunk.length;
         currentChunkIndex++;
         playNextChunk();
       };
 
       audio.onerror = () => {
+        if (sessionId !== currentSessionRef.current) return;
         setIsPlaying(false);
       };
 
       audio.play().catch(() => {
-        setIsPlaying(false);
+        if (sessionId === currentSessionRef.current) setIsPlaying(false);
       });
     };
 
