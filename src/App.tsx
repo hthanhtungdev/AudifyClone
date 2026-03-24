@@ -152,9 +152,12 @@ function App() {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
       googleAudioRef.current.pause();
+      // Xóa các listeners để tránh gậy nhiễu phiên sau
       googleAudioRef.current.onended = null;
       googleAudioRef.current.onerror = null;
       googleAudioRef.current.onplay = null;
+      googleAudioRef.current.onplaying = null;
+      googleAudioRef.current.onpause = null;
       googleAudioRef.current.ontimeupdate = null;
     }
     if (prefetchAudioRef.current) {
@@ -257,6 +260,18 @@ function App() {
       // Giữ highlightCharIndex để có thể đọc tiếp sau khi gặp lỗi
     };
 
+    utterance.onstart = () => {
+      setIsPlaying(true);
+    };
+
+    utterance.onpause = () => {
+      setIsPlaying(false);
+    };
+
+    utterance.onresume = () => {
+      setIsPlaying(true);
+    };
+
     // Theo dõi vị trí đang đọc để highlight
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
@@ -337,6 +352,14 @@ function App() {
         setHighlightCharIndex(accumulatedChars);
       };
 
+      // Đồng bộ nút Pause/Play dựa trên trạng thái thực của phần cứng (iOS Safari Fix)
+      audio.onplaying = () => {
+        if (sessionId === currentSessionRef.current) setIsPlaying(true);
+      };
+      audio.onpause = () => {
+        if (sessionId === currentSessionRef.current && !audio.ended) setIsPlaying(false);
+      };
+
       // Giả lập highlight từng từ dựa trên tiến trình phát của file Audio
       let lastUpdate = 0;
       audio.ontimeupdate = () => {
@@ -345,7 +368,8 @@ function App() {
         if (now - lastUpdate < 100) return; 
         lastUpdate = now;
 
-        if (!audio.duration || !isPlayingRef.current) return;
+        // Nếu âm thanh đang phát (duration > 0), LUÔN highlight bất kể trạng thái UI (để tránh bị "đứng hình")
+        if (!audio.duration || audio.paused) return;
         
         const progress = audio.currentTime / audio.duration;
         const charIndexInChunk = Math.floor(progress * chunk.length);
@@ -377,7 +401,12 @@ function App() {
       };
 
       audio.play().catch(() => {
-        if (sessionId === currentSessionRef.current) setIsPlaying(false);
+        if (sessionId === currentSessionRef.current) {
+            // Thử lại sau 1s nếu bị iOS chặn autoplay (rất hiếm khi đã có user interaction)
+            setTimeout(() => {
+                if (sessionId === currentSessionRef.current) audio.play().catch(() => setIsPlaying(false));
+            }, 1000);
+        }
       });
     };
 
