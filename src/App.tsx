@@ -278,6 +278,7 @@ function App() {
       audio.onplay = null;
       audio.onended = null;
       audio.onerror = null;
+      audio.ontimeupdate = null;
 
       audio.src = proxiedUrl;
       audio.playbackRate = speed;
@@ -288,6 +289,20 @@ function App() {
           return;
         }
         setHighlightCharIndex(accumulatedChars);
+      };
+
+      // Giả lập highlight từng từ dựa trên tiến trình phát của file Audio
+      audio.ontimeupdate = () => {
+        if (!audio.duration || !isPlayingRef.current) return;
+        
+        const progress = audio.currentTime / audio.duration;
+        const charIndexInChunk = Math.floor(progress * chunk.length);
+        
+        // Tìm vị trí bắt đầu của từ gần nhất để highlight không bị cắt nửa chừng
+        const lastSpace = chunk.lastIndexOf(' ', charIndexInChunk);
+        const wordStart = lastSpace === -1 ? 0 : lastSpace + 1;
+        
+        setHighlightCharIndex(accumulatedChars + wordStart);
       };
 
       audio.onended = () => {
