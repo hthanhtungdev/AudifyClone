@@ -322,6 +322,7 @@ function App() {
     
     let currentChunkIndex = 0;
     let accumulatedChars = startIndex;
+    let isProcessingNext = false; // Khóa bảo vệ để tránh Race Condition (chạy song song 2 luồng)
     
     // KHÔNG pause ở đây để tránh interrupt iOS
     if (googleAudioRef.current) {
@@ -330,10 +331,12 @@ function App() {
     }
 
     const playNextChunk = () => {
-      if (sessionId !== currentSessionRef.current) return;
+      if (sessionId !== currentSessionRef.current || isProcessingNext) return;
+      isProcessingNext = true; // Khóa luồng
 
       if (currentChunkIndex >= chunks.length || !isPlayingRef.current) {
         if (sessionId === currentSessionRef.current) setIsPlaying(false);
+        isProcessingNext = false;
         return;
       }
 
@@ -341,6 +344,7 @@ function App() {
       const audio = googleAudioRef.current;
       if (!audio) {
         setIsPlaying(false);
+        isProcessingNext = false;
         return;
       }
       
@@ -361,6 +365,7 @@ function App() {
       audio.src = proxiedUrl;
       audio.playbackRate = speed;
       audio.load(); // Đảm bảo nạp dữ liệu mới trên iOS
+      isProcessingNext = false; // Mở khóa sau khi nạp xong src và gắn listeners mới
       
       audio.onplay = () => {
         if (sessionId !== currentSessionRef.current) return;
