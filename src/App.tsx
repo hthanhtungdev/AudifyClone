@@ -657,7 +657,7 @@ function App() {
                   return (
                     <p 
                       key={segIndex} 
-                      className={`mb-6 text-left whitespace-pre-wrap break-words transition-all duration-300 rounded-r-xl will-change-[background-color,transform] ${isParagraphActive ? "bg-blue-600/10 border-l-4 border-blue-600 pl-4 py-2" : "border-l-4 border-transparent pl-4 py-2"}`}
+                      className={`mb-6 text-left whitespace-pre-wrap break-words transition-all duration-300 rounded-xl will-change-[background-color,transform] px-4 py-3 ${isParagraphActive ? "bg-emerald-600/20 shadow-[inset_0_0_20px_rgba(16,185,129,0.1)] ring-1 ring-emerald-500/30" : "bg-transparent border-l-4 border-transparent"}`}
                     >
                       {segment.split(/(\s+)/).map((part, i) => {
                         const wordStartIdx = currentGlobalIndex;
@@ -672,7 +672,7 @@ function App() {
                               playFromStart(wordStartIdx);
                             }}
                             data-index={wordStartIdx}
-                            className={`cursor-pointer transition-colors duration-200 hover:bg-gray-800 rounded select-none ${!isWhitespace ? "px-0.5" : "px-0"} ${isHighlighted ? "bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.6)] font-bold" : ""}`}
+                            className={`cursor-pointer transition-all duration-200 hover:bg-white/10 rounded select-none ${!isWhitespace ? "px-1" : "px-0"} ${isHighlighted ? "bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)] font-bold scale-105" : ""}`}
                             data-highlight={isHighlighted ? "true" : "false"}
                           >
                             {part}
