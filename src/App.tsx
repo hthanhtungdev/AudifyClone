@@ -127,6 +127,16 @@ function App() {
     if (isPlaying) {
       handlePause();
     } else {
+      // Mở khóa (Unlock) Audio Context cho cả Speech và Audio element trên iOS
+      const wakeUp = new SpeechSynthesisUtterance("");
+      window.speechSynthesis.speak(wakeUp);
+      
+      if (googleAudioRef.current) {
+        googleAudioRef.current.play().then(() => {
+          if (!isPlayingRef.current) googleAudioRef.current?.pause();
+        }).catch(() => {});
+      }
+
       setIsAutoScrollEnabled(true);
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
@@ -221,8 +231,13 @@ function App() {
       }
     };
 
-    window.speechSynthesis.speak(utterance);
-    setIsPlaying(true);
+    // Debounce cancel/speak cho iOS Safari để không bị "mất hút"
+    setTimeout(() => {
+      if (isPlayingRef.current || startIndex > 0) { // Check lại nếu chưa bị stop
+        window.speechSynthesis.speak(utterance);
+        setIsPlaying(true);
+      }
+    }, 50);
   };
 
   const handlePlayGoogleOnline = (startIndex: number) => {
