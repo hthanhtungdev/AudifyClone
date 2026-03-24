@@ -61,16 +61,25 @@ function App() {
       const vnVoices = availableVoices.filter(v => v.lang.includes('vi'));
       setVoices(vnVoices);
 
-      // Tự động chọn giọng phù hợp nhất nếu chưa chọn
-      if (!selectedVoiceName && vnVoices.length > 0) {
-        const bestVoiceIdx = vnVoices.findIndex(v => {
-          const vVal = (v.name + v.voiceURI).toLowerCase();
-          return vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
-        });
-        const finalIdx = bestVoiceIdx !== -1 ? bestVoiceIdx : 0;
-        setSelectedVoiceName(`${vnVoices[finalIdx].voiceURI}|${finalIdx}`);
-      }
-    };
+        // Tự động chọn giọng Nâng cao (Premium) tốt nhất nếu chưa chọn
+        if (!selectedVoiceName && vnVoices.length > 0) {
+          const sortedBest = [...vnVoices].sort((a, b) => {
+            const vA = (a.name + a.voiceURI).toLowerCase();
+            const vB = (b.name + b.voiceURI).toLowerCase();
+            const rank = (v: string) => {
+              if (v.includes('premium')) return 3;
+              if (v.includes('enhanced') || v.includes('hq')) return 2;
+              if (v.includes('compact')) return -1;
+              return 0;
+            };
+            return rank(vB) - rank(vA);
+          });
+          
+          const bestVoice = sortedBest[0];
+          const originalIdx = vnVoices.findIndex(v => v === bestVoice);
+          setSelectedVoiceName(`${bestVoice.voiceURI}|${originalIdx}`);
+        }
+      };
 
     updateVoices();
     window.speechSynthesis.onvoiceschanged = updateVoices;
@@ -494,22 +503,33 @@ function App() {
                 .map((v, originalIdx) => {
                   const vVal = (v.name + v.voiceURI).toLowerCase();
                   const isPremium = vVal.includes('premium') || vVal.includes('enhanced') || vVal.includes('hq') || vVal.includes('high');
+                  const isCompact = vVal.includes('compact');
                   
                   let displayName = v.name
                     .replace('Microsoft ', '')
                     .replace(/\(Enhanced\)/i, '')
                     .replace(/\(Premium\)/i, '')
+                    .replace(/\(Compact\)/i, '')
+                    .replace(' (Natural)', '')
                     .trim();
 
                   if (isPremium) {
                     displayName += ' (Nâng cao ✨)';
+                  } else if (isCompact) {
+                    displayName += ' (Tiêu chuẩn)';
                   }
 
-                  return { v, displayName, isPremium, value: `${v.voiceURI}|${originalIdx}` };
+                  return { v, displayName, isPremium, isCompact, value: `${v.voiceURI}|${originalIdx}` };
                 })
                 .sort((a, b) => {
-                  if (a.isPremium && !b.isPremium) return -1;
-                  if (!a.isPremium && b.isPremium) return 1;
+                  const rank = (item: any) => {
+                    if (item.isPremium) return 2;
+                    if (item.isCompact) return -1;
+                    return 0;
+                  };
+                  const rA = rank(a);
+                  const rB = rank(b);
+                  if (rA !== rB) return rB - rA;
                   return a.displayName.localeCompare(b.displayName);
                 })
                 .map((item) => (
