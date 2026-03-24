@@ -127,16 +127,6 @@ function App() {
     if (isPlaying) {
       handlePause();
     } else {
-      // Mở khóa (Unlock) Audio Context cho cả Speech và Audio element trên iOS
-      const wakeUp = new SpeechSynthesisUtterance("");
-      window.speechSynthesis.speak(wakeUp);
-      
-      if (googleAudioRef.current) {
-        googleAudioRef.current.play().then(() => {
-          if (!isPlayingRef.current) googleAudioRef.current?.pause();
-        }).catch(() => {});
-      }
-
       setIsAutoScrollEnabled(true);
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume();
@@ -165,6 +155,18 @@ function App() {
   const playFromStart = (startIndex: number = 0) => {
     if (!content) return;
     setIsAutoScrollEnabled(true); // Bật lại cuộn khi chọn từ mới
+
+    // BẮT BUỘC: Mở khóa Audio trên iOS ngay tại đây (trong callback sự kiện click/tap)
+    const wakeUp = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(wakeUp);
+    if (googleAudioRef.current) {
+      googleAudioRef.current.play().then(() => {
+        // Chỉ pause nếu lúc này trạng thái thực không phải đang phát
+        if (!isPlayingRef.current && selectedVoiceName !== GOOGLE_TTS_ID) {
+          googleAudioRef.current?.pause();
+        }
+      }).catch(() => {});
+    }
     
     // Nhảy tới từ mới lập tức (instant) để tránh jitter trên iPhone
     if (mainContentRef.current) {
@@ -242,9 +244,7 @@ function App() {
 
   const handlePlayGoogleOnline = (startIndex: number) => {
     window.speechSynthesis.cancel();
-    if (googleAudioRef.current) {
-      googleAudioRef.current.pause();
-    }
+    // KHÔNG pause ở đây nếu vừa gọi play ở playFromStart để tránh interrupt iOS
     setIsPlaying(true);
 
     
