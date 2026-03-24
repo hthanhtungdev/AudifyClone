@@ -76,9 +76,10 @@ export default defineConfig({
               res.setHeader('Content-Type', 'text/html; charset=utf-8');
             }
 
-            const text = await fetchResponse.text();
-            res.end(text);
+            const arrayBuffer = await fetchResponse.arrayBuffer();
+            res.end(new Uint8Array(arrayBuffer));
           } catch (e: any) {
+            console.error('Proxy error:', e);
             res.statusCode = 500;
             res.end(e.message);
           }

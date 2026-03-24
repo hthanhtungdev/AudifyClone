@@ -7,7 +7,12 @@ function App() {
   const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
   const [content, setContent] = useState(() => (localStorage.getItem('audify_content') || '').normalize('NFC'));
   const [loading, setLoading] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPlaying, setIsPlayingState] = useState(false);
+  const isPlayingRef = useRef(false);
+  const setIsPlaying = (val: boolean) => {
+    setIsPlayingState(val);
+    isPlayingRef.current = val;
+  };
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => localStorage.getItem('audify_voice') || '');
@@ -136,7 +141,6 @@ function App() {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
       googleAudioRef.current.pause();
-      googleAudioRef.current = null;
     }
     setIsPlaying(false);
   };
@@ -225,50 +229,81 @@ function App() {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
       googleAudioRef.current.pause();
-      googleAudioRef.current = null;
     }
     setIsPlaying(true);
 
     
-    // Tách văn bản thành các đoạn nhỏ dưới 200 ký tự (giới hạn Google TTS)
+    // Chia văn bản thành các đoạn nhỏ dưới 180 ký tự (Giới hạn của Google TTS)
     const text = content.slice(startIndex);
-    const chunks = text.match(/[^.!?\s][^.!?]*[.!?]?/g) || [text];
+    const words = text.split(/\s+/);
+    const chunks: string[] = [];
+    let currentChunk = "";
+    
+    for (const word of words) {
+      if ((currentChunk + " " + word).length < 180) {
+        currentChunk += (currentChunk ? " " : "") + word;
+      } else {
+        if (currentChunk) chunks.push(currentChunk);
+        currentChunk = word;
+      }
+    }
+    if (currentChunk) chunks.push(currentChunk);
     
     let currentChunkIndex = 0;
     let accumulatedChars = startIndex;
+    
+    // Unlock Audio on iOS: Cần phát một đoạn âm thanh trống hoặc pause/play ngay trong callback click
+    if (googleAudioRef.current) {
+      googleAudioRef.current.play().then(() => {
+        if (!isPlayingRef.current) googleAudioRef.current?.pause();
+      }).catch(() => {});
+    }
 
     const playNextChunk = () => {
-      if (currentChunkIndex >= chunks.length || !isPlaying) {
+      if (currentChunkIndex >= chunks.length || !isPlayingRef.current) {
         setIsPlaying(false);
-        googleAudioRef.current = null;
         return;
       }
 
       const chunk = chunks[currentChunkIndex];
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+      const audio = googleAudioRef.current;
+      if (!audio) {
+        setIsPlaying(false);
+        return;
+      }
       
-      const audio = new Audio(ttsUrl);
-      googleAudioRef.current = audio;
+      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=vi&client=tw-ob`;
+      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(ttsUrl)}`;
+
+      audio.onplay = null;
+      audio.onended = null;
+      audio.onerror = null;
+
+      audio.src = proxiedUrl;
       audio.playbackRate = speed;
       
       audio.onplay = () => {
+        if (!isPlayingRef.current) {
+          audio.pause();
+          return;
+        }
         setHighlightCharIndex(accumulatedChars);
       };
 
       audio.onended = () => {
-        accumulatedChars += chunk.length;
+        const nextCharIndex = content.indexOf(chunk, accumulatedChars) + chunk.length;
+        accumulatedChars = nextCharIndex;
         currentChunkIndex++;
-        if (googleAudioRef.current === audio) {
-          playNextChunk();
-        }
+        playNextChunk();
       };
 
       audio.onerror = () => {
         setIsPlaying(false);
-        googleAudioRef.current = null;
       };
 
-      audio.play();
+      audio.play().catch(() => {
+        setIsPlaying(false);
+      });
     };
 
     playNextChunk();
@@ -351,7 +386,6 @@ function App() {
     window.speechSynthesis.cancel();
     if (googleAudioRef.current) {
       googleAudioRef.current.pause();
-      googleAudioRef.current = null;
     }
     setIsPlaying(false);
     setHighlightCharIndex(-1);
@@ -672,6 +706,9 @@ function App() {
           </div>
         </div>
       </footer>
+      
+      {/* Thẻ audio cố định trên DOM để bypass lỗi tự chạy (autoplay) trên iOS */}
+      <audio ref={googleAudioRef} className="hidden" playsInline crossOrigin="anonymous" />
     </div>
   );
 }
