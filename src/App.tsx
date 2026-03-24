@@ -143,7 +143,8 @@ function App() {
         window.speechSynthesis.resume();
         setIsPlaying(true);
       } else {
-        playFromStart(highlightCharIndex !== -1 ? highlightCharIndex : 0);
+        // Resume mà không được nhảy về đầu đoạn (nên truyền false)
+        playFromStart(highlightCharIndex !== -1 ? highlightCharIndex : 0, false);
       }
     }
   };
@@ -174,16 +175,21 @@ function App() {
     }
   };
 
-  const playFromStart = (startIndex: number = 0) => {
+  const playFromStart = (startIndex: number = 0, shouldJumpToStart: boolean = true) => {
     if (!content) return;
     setIsAutoScrollEnabled(true); 
 
-    // Tự động tìm vị trí đầu đoạn văn (Paragraph Start)
-    let paragraphStartIndex = content.lastIndexOf('\n', startIndex - 1);
-    paragraphStartIndex = paragraphStartIndex === -1 ? 0 : paragraphStartIndex + 1;
-    
-    // Sử dụng vị trí đầu đoạn để bắt đầu đọc
-    const actualStartIndex = paragraphStartIndex;
+    let actualStartIndex = startIndex;
+
+    if (shouldJumpToStart) {
+        // Tự động tìm vị trí đầu đoạn văn (Paragraph Start)
+        let paragraphStartIndex = content.lastIndexOf('\n', startIndex - 1);
+        paragraphStartIndex = paragraphStartIndex === -1 ? 0 : paragraphStartIndex + 1;
+        actualStartIndex = paragraphStartIndex;
+    }
+
+    // Cập nhật Highlight ngay lập tức để UI nhảy tới đoạn mới tức thì
+    setHighlightCharIndex(actualStartIndex);
 
     // Rung nhẹ phản hồi (Haptic peak) nếu thiết bị hỗ trợ
     if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
@@ -291,6 +297,7 @@ function App() {
 
   const handlePlayGoogleOnline = (startIndex: number) => {
     window.speechSynthesis.cancel();
+    setHighlightCharIndex(startIndex); // Cập nhật tức thì
     setIsPlaying(true);
     const sessionId = ++currentSessionRef.current;
 
@@ -463,6 +470,14 @@ function App() {
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const currentScrollY = e.currentTarget.scrollTop;
     
+    // Nếu người dùng đang tự cuộn (không phải do auto-scroll trigger), thì tạm tắt auto-scroll
+    if (!isScrollingToRef.current && isPlaying && isAutoScrollEnabled) {
+      // Chỉ tắt nếu khoảng cách thay đổi đủ lớn (ví dụ > 5px) để tránh nhảy trạng thái do rung nhẹ
+      if (Math.abs(currentScrollY - lastScrollY.current) > 5) {
+        setIsAutoScrollEnabled(false);
+      }
+    }
+
     // Hiện nút cuộn lên đầu khi cuộn qua 300px
     setShowScrollTop(currentScrollY > 300);
 
@@ -657,8 +672,9 @@ function App() {
                   return (
                     <p 
                       key={segIndex} 
-                      className={`mb-6 text-left whitespace-pre-wrap break-words transition-all duration-300 rounded-xl will-change-[background-color,transform] px-4 py-3 ${isParagraphActive ? "bg-emerald-600/20 shadow-[inset_0_0_20px_rgba(16,185,129,0.1)] ring-1 ring-emerald-500/30" : "bg-transparent border-l-4 border-transparent"}`}
+                      className={`mb-6 text-left whitespace-pre-wrap break-words px-4 py-1 transition-all duration-300 rounded-xl will-change-transform ${isParagraphActive ? "border-l-4 border-emerald-500/50 pl-4" : "border-l-4 border-transparent pl-4"}`}
                     >
+                      <span className={`${isParagraphActive ? "bg-emerald-600/20 ring-4 ring-emerald-600/20 rounded-sm" : ""}`} style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>
                       {segment.split(/(\s+)/).map((part, i) => {
                         const wordStartIdx = currentGlobalIndex;
                         const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
@@ -679,6 +695,7 @@ function App() {
                           </span>
                         );
                       })}
+                      </span>
                     </p>
                   );
                 });
