@@ -19,6 +19,8 @@ function App() {
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const pendingTimeoutRef = useRef<number | null>(null);
+  const isProcessingRef = useRef(false);
 
   // Debug logger
   const addLog = (message: string) => {
@@ -150,9 +152,17 @@ function App() {
 
   // Stop speaking
   const stopSpeaking = () => {
+    // Clear any pending timeout
+    if (pendingTimeoutRef.current) {
+      clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = null;
+    }
+    
     window.speechSynthesis.cancel();
     setIsPlaying(false);
     utteranceRef.current = null;
+    isProcessingRef.current = false;
+    addLog('Stopped');
   };
 
   // Speak paragraph - CRITICAL: Must be called directly from user event
@@ -166,11 +176,27 @@ function App() {
       return;
     }
 
+    // Prevent overlapping calls
+    if (isProcessingRef.current) {
+      addLog('Already processing, canceling...');
+      stopSpeaking();
+    }
+    
+    isProcessingRef.current = true;
+
+    // Clear any pending timeout
+    if (pendingTimeoutRef.current) {
+      clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = null;
+    }
+
     // Stop current speech
     window.speechSynthesis.cancel();
 
     // iOS FIX: Small delay after cancel
-    setTimeout(() => {
+    pendingTimeoutRef.current = setTimeout(() => {
+      pendingTimeoutRef.current = null;
+      
       // Create utterance
       const text = paragraphs[index];
       addLog(`Text: ${text.substring(0, 30)}...`);
@@ -198,11 +224,14 @@ function App() {
         console.log('Speech started for index:', index);
         setIsPlaying(true);
         setCurrentParagraph(index);
+        isProcessingRef.current = false;
       };
 
       utterance.onend = () => {
         addLog(`✓ Speech ended: ${index}`);
         console.log('Speech ended for index:', index);
+        isProcessingRef.current = false;
+        
         // Auto play next sentence
         if (index + 1 < paragraphs.length) {
           speakParagraph(index + 1);
@@ -215,6 +244,7 @@ function App() {
       utterance.onerror = (e) => {
         addLog(`✗ ERROR: ${e.error} at ${index}`);
         console.error('Speech error:', e.error, 'for index:', index);
+        isProcessingRef.current = false;
         
         // iOS workaround: If canceled, try once more
         if (e.error === 'canceled' && index === currentParagraph) {
