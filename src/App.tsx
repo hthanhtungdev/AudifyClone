@@ -143,7 +143,12 @@ function App() {
   };
 
   const startSpeaking = (fromCharIndex: number = 0) => {
-    if (!content) return;
+    if (!content) {
+      console.log('No content to speak');
+      return;
+    }
+
+    console.log('Starting speech from char:', fromCharIndex);
 
     stopSpeaking();
 
@@ -160,51 +165,74 @@ function App() {
     }
 
     const textToSpeak = content.slice(startIndex);
-    if (!textToSpeak.trim()) return;
-
-    // Unlock audio on iOS
-    const wakeUp = new SpeechSynthesisUtterance("");
-    window.speechSynthesis.speak(wakeUp);
-
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    const voice = getSelectedVoice();
-
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
+    console.log('Text to speak (first 100 chars):', textToSpeak.slice(0, 100));
+    
+    if (!textToSpeak.trim()) {
+      console.log('No text to speak after trim');
+      return;
     }
 
-    utterance.rate = speed;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        setCurrentCharIndex(startIndex + event.charIndex);
-      }
-    };
-
-    utterance.onstart = () => {
-      setIsPlaying(true);
-      setCurrentCharIndex(startIndex);
-    };
-
-    utterance.onend = () => {
-      setIsPlaying(false);
-      setCurrentCharIndex(-1);
-    };
-
-    utterance.onerror = () => {
-      setIsPlaying(false);
-      setCurrentCharIndex(-1);
-    };
-
-    utteranceRef.current = utterance;
-
-    setTimeout(() => {
+    // CRITICAL: Unlock audio on iOS - must be called in user gesture
+    try {
+      const wakeUp = new SpeechSynthesisUtterance("");
       window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(wakeUp);
+      console.log('Audio unlocked');
+    } catch (e) {
+      console.error('Failed to unlock audio:', e);
+    }
+
+    // Small delay to ensure unlock completes
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      const voice = getSelectedVoice();
+
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+        console.log('Using voice:', voice.name);
+      } else {
+        console.log('No voice selected, using default');
+      }
+
+      utterance.rate = speed;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+
+      utterance.onboundary = (event) => {
+        if (event.name === 'word') {
+          setCurrentCharIndex(startIndex + event.charIndex);
+        }
+      };
+
+      utterance.onstart = () => {
+        console.log('Speech started successfully');
+        setIsPlaying(true);
+        setCurrentCharIndex(startIndex);
+      };
+
+      utterance.onend = () => {
+        console.log('Speech ended');
+        setIsPlaying(false);
+        setCurrentCharIndex(-1);
+      };
+
+      utterance.onerror = (event) => {
+        console.error('Speech error:', event.error, event);
+        setIsPlaying(false);
+        setCurrentCharIndex(-1);
+      };
+
+      utteranceRef.current = utterance;
+
+      // Speak
+      window.speechSynthesis.cancel(); // Clear any pending
       window.speechSynthesis.speak(utterance);
-    }, 100);
+      
+      console.log('speechSynthesis.speaking:', window.speechSynthesis.speaking);
+      console.log('speechSynthesis.pending:', window.speechSynthesis.pending);
+      console.log('speechSynthesis.paused:', window.speechSynthesis.paused);
+    }, 50);
   };
 
   const handlePlayPause = () => {
@@ -225,7 +253,10 @@ function App() {
   };
 
   const handleTextClick = (charIndex: number) => {
-    console.log('Text clicked at char:', charIndex);
+    console.log('=== TEXT CLICKED ===');
+    console.log('Char index:', charIndex);
+    console.log('Content length:', content.length);
+    console.log('Has voices:', voices.length);
     
     // Visual feedback
     if (window.navigator && window.navigator.vibrate) {
@@ -233,6 +264,8 @@ function App() {
     }
     
     setIsAutoScrollEnabled(true);
+    
+    // Call startSpeaking directly in the click handler (important for iOS)
     startSpeaking(charIndex);
   };
 
@@ -377,22 +410,36 @@ function App() {
                 return (
                   <p 
                     key={pIndex}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleTextClick(paragraphStart);
+                    onTouchStart={(e) => {
+                      // Prevent default to avoid iOS quirks
+                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                     }}
                     onTouchEnd={(e) => {
                       e.preventDefault();
+                      e.stopPropagation();
+                      e.currentTarget.style.backgroundColor = '';
+                      console.log('Touch end on paragraph:', pIndex);
+                      handleTextClick(paragraphStart);
+                    }}
+                    onTouchCancel={(e) => {
+                      e.currentTarget.style.backgroundColor = '';
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('Click on paragraph:', pIndex);
                       handleTextClick(paragraphStart);
                     }}
                     data-active={isActive ? "true" : "false"}
                     className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-all duration-200 ${
                       isActive 
                         ? 'bg-blue-600/30 border-l-4 border-blue-400 text-white shadow-lg' 
-                        : 'bg-gray-900/30 active:bg-blue-600/10 active:scale-[0.99]'
+                        : 'bg-gray-900/30'
                     }`}
-                    style={{ WebkitTapHighlightColor: 'transparent' }}
+                    style={{ 
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation'
+                    }}
                   >
                     {paragraph}
                   </p>
