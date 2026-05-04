@@ -508,13 +508,13 @@ function App() {
             <div className="mb-6">
               <div className="flex justify-between items-center mb-3">
                 <label className="text-sm text-gray-400">Tốc độ</label>
-                <span className="text-lg text-blue-500 font-bold">{speed.toFixed(1)}x</span>
+                <span className="text-lg text-blue-500 font-bold">{speed.toFixed(2)}x</span>
               </div>
               
               {/* Buttons for precise control */}
               <div className="flex items-center gap-3 mb-3">
                 <button
-                  onClick={() => setSpeed(Math.max(0.5, speed - 0.1))}
+                  onClick={() => setSpeed(Math.max(0.5, parseFloat((speed - 0.05).toFixed(2))))}
                   className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
                 >
                   −
@@ -524,7 +524,7 @@ function App() {
                   type="range"
                   min="0.5"
                   max="2.0"
-                  step="0.1"
+                  step="0.05"
                   value={speed}
                   onChange={(e) => setSpeed(parseFloat(e.target.value))}
                   className="flex-1 h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
@@ -534,7 +534,7 @@ function App() {
                 />
                 
                 <button
-                  onClick={() => setSpeed(Math.min(2.0, speed + 0.1))}
+                  onClick={() => setSpeed(Math.min(2.0, parseFloat((speed + 0.05).toFixed(2))))}
                   className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
                 >
                   +
