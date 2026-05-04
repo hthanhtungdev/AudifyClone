@@ -208,6 +208,13 @@ function App() {
   };
 
   const handlePlayPause = () => {
+    console.log('Play/Pause clicked, isPlaying:', isPlaying);
+    
+    // Haptic feedback
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(30);
+    }
+    
     if (isPlaying) {
       stopSpeaking();
     } else {
@@ -218,6 +225,13 @@ function App() {
   };
 
   const handleTextClick = (charIndex: number) => {
+    console.log('Text clicked at char:', charIndex);
+    
+    // Visual feedback
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(50);
+    }
+    
     setIsAutoScrollEnabled(true);
     startSpeaking(charIndex);
   };
@@ -355,13 +369,22 @@ function App() {
                 return (
                   <p 
                     key={pIndex}
-                    onClick={() => handleTextClick(paragraphStart)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleTextClick(paragraphStart);
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      handleTextClick(paragraphStart);
+                    }}
                     data-active={isActive ? "true" : "false"}
-                    className={`mb-4 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 touch-manipulation ${
+                    className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-all duration-200 ${
                       isActive 
-                        ? 'bg-blue-600/20 border-l-4 border-blue-500 text-white' 
-                        : 'active:bg-gray-800/50'
+                        ? 'bg-blue-600/30 border-l-4 border-blue-400 text-white shadow-lg' 
+                        : 'bg-gray-900/30 active:bg-blue-600/10 active:scale-[0.99]'
                     }`}
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
                     {paragraph}
                   </p>
