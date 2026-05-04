@@ -14,9 +14,16 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Debug logger
+  const addLog = (message: string) => {
+    setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
 
   // Register Service Worker
   useEffect(() => {
@@ -140,13 +147,20 @@ function App() {
 
   // Speak paragraph - CRITICAL: Must be called directly from user event
   const speakParagraph = (index: number) => {
-    if (index < 0 || index >= paragraphs.length) return;
+    console.log('speakParagraph called with index:', index);
+    
+    if (index < 0 || index >= paragraphs.length) {
+      console.error('Invalid index:', index, 'Total:', paragraphs.length);
+      return;
+    }
 
     // Stop current speech
     window.speechSynthesis.cancel();
 
     // Create utterance
     const text = paragraphs[index];
+    console.log('Speaking text:', text.substring(0, 50) + '...');
+    
     const utterance = new SpeechSynthesisUtterance(text);
 
     // Set voice
@@ -163,11 +177,13 @@ function App() {
     utterance.volume = 1;
 
     utterance.onstart = () => {
+      console.log('Speech started for index:', index);
       setIsPlaying(true);
       setCurrentParagraph(index);
     };
 
     utterance.onend = () => {
+      console.log('Speech ended for index:', index);
       // Auto play next paragraph
       if (index + 1 < paragraphs.length) {
         speakParagraph(index + 1);
@@ -178,7 +194,7 @@ function App() {
     };
 
     utterance.onerror = (e) => {
-      console.error('Speech error:', e);
+      console.error('Speech error:', e.error, 'for index:', index);
       setIsPlaying(false);
     };
 
@@ -225,6 +241,9 @@ function App() {
 
   // Handle paragraph click
   const handleParagraphClick = (index: number) => {
+    console.log('Clicked paragraph index:', index);
+    console.log('Total paragraphs:', paragraphs.length);
+    console.log('Paragraph text:', paragraphs[index]?.substring(0, 50));
     speakParagraph(index);
   };
 
