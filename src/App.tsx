@@ -13,11 +13,19 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentCharIndex, setCurrentCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastScrollTime = useRef(0);
   const isScrollingToRef = useRef(false);
+
+  // Custom console.log that also shows on screen
+  const debugLog = (message: string) => {
+    console.log(message);
+    setDebugLogs(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
 
   // Sync state with localStorage
   useEffect(() => {
@@ -144,11 +152,11 @@ function App() {
 
   const startSpeaking = (fromCharIndex: number = 0) => {
     if (!content) {
-      console.log('No content to speak');
+      debugLog('❌ No content to speak');
       return;
     }
 
-    console.log('Starting speech from char:', fromCharIndex);
+    debugLog(`▶️ Starting speech from char: ${fromCharIndex}`);
 
     stopSpeaking();
 
@@ -253,10 +261,7 @@ function App() {
   };
 
   const handleTextClick = (charIndex: number) => {
-    console.log('=== TEXT CLICKED ===');
-    console.log('Char index:', charIndex);
-    console.log('Content length:', content.length);
-    console.log('Has voices:', voices.length);
+    debugLog(`👆 TEXT CLICKED at char: ${charIndex}`);
     
     // Visual feedback
     if (window.navigator && window.navigator.vibrate) {
@@ -412,16 +417,16 @@ function App() {
                     type="button"
                     onPointerDown={(e) => {
                       e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
-                      console.log('👆 Pointer down on paragraph:', pIndex);
+                      debugLog(`� Pointer DOWN on p${pIndex}`);
                     }}
                     onPointerUp={(e) => {
                       e.currentTarget.style.backgroundColor = '';
-                      console.log('👆 Pointer up on paragraph:', pIndex);
+                      debugLog(`👆 Pointer UP on p${pIndex}`);
                       handleTextClick(paragraphStart);
                     }}
                     onPointerCancel={(e) => {
                       e.currentTarget.style.backgroundColor = '';
-                      console.log('❌ Pointer cancelled');
+                      debugLog('❌ Pointer CANCELLED');
                     }}
                     data-active={isActive ? "true" : "false"}
                     className={`w-full text-left mb-4 px-4 py-3 rounded-lg select-none transition-colors duration-150 ${
@@ -460,6 +465,25 @@ function App() {
         >
           Tiếp tục cuộn tự động
         </button>
+      )}
+
+      {/* Debug Panel */}
+      {showDebug && (
+        <div className="fixed top-16 left-0 right-0 bg-black/95 text-green-400 p-4 z-[200] max-h-64 overflow-y-auto text-xs font-mono border-b border-green-500">
+          <div className="flex justify-between items-center mb-2">
+            <span className="font-bold">🐛 Debug Logs</span>
+            <button 
+              onClick={() => setDebugLogs([])}
+              className="text-red-400 text-xs"
+            >
+              Clear
+            </button>
+          </div>
+          {debugLogs.map((log, i) => (
+            <div key={i} className="mb-1">{log}</div>
+          ))}
+          {debugLogs.length === 0 && <div className="text-gray-500">No logs yet...</div>}
+        </div>
       )}
 
       {/* Bottom Control Bar */}
@@ -518,11 +542,12 @@ function App() {
           </button>
 
           <button 
-            className="p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all"
+            onClick={() => setShowDebug(!showDebug)}
+            className={`p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all ${showDebug ? 'text-green-500' : ''}`}
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+              <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
           </button>
         </div>
