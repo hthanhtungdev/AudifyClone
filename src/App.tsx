@@ -495,7 +495,7 @@ function App() {
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
       {/* Top Bar */}
-      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 p-3">
+      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 p-3 relative z-50">
         <div className="flex gap-2">
           <input
             type="url"
@@ -505,11 +505,13 @@ function App() {
             placeholder="Nhập URL..."
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
             onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
+            style={{ position: 'relative', zIndex: 100 }}
           />
           <button
             onClick={fetchContent}
             disabled={loading}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
+            style={{ position: 'relative', zIndex: 100 }}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Tải'}
           </button>
