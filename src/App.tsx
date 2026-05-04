@@ -340,7 +340,7 @@ function App() {
       {/* Main Content Area */}
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto px-4 py-6"
+        className="flex-1 overflow-y-auto px-4 py-6 pb-32"
         onScroll={handleScroll}
         onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
@@ -399,21 +399,21 @@ function App() {
           </div>
         )}
         
-        <div className="h-24"></div>
+        <div className="h-32"></div>
       </main>
 
       {/* Resume Auto-scroll Button */}
       {!isAutoScrollEnabled && isPlaying && (
         <button 
           onClick={() => setIsAutoScrollEnabled(true)}
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10"
+          className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10"
         >
           Tiếp tục cuộn tự động
         </button>
       )}
 
       {/* Bottom Control Bar - Giống ảnh */}
-      <div className="bg-[#1c1c1e] border-t border-gray-800 px-6 py-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-6 py-4 safe-area-inset-bottom z-50">
         <div className="flex items-center justify-between max-w-md mx-auto">
           {/* Previous Button */}
           <button
