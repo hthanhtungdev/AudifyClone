@@ -40,42 +40,22 @@ export default async function handler(req, res) {
     }
 
     // Giả lập trình duyệt iPhone để vượt qua rào cản bot
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'DNT': '1',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Cache-Control': 'max-age=0'
-    };
-    
-    // Try with referer first
-    let fetchResponse = await fetch(targetUrl, {
+    const fetchResponse = await fetch(targetUrl, {
       headers: {
-        ...headers,
-        'Referer': new URL(targetUrl).origin
+        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': targetUrl,
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0'
       }
     });
-    
-    // If 403, retry without referer
-    if (fetchResponse.status === 403) {
-      fetchResponse = await fetch(targetUrl, { headers });
-    }
-    
-    // If still 403, try with different User-Agent
-    if (fetchResponse.status === 403) {
-      fetchResponse = await fetch(targetUrl, {
-        headers: {
-          ...headers,
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      });
-    }
     
     // Forward the content type if available
     const contentType = fetchResponse.headers.get('content-type') || 'text/html; charset=utf-8';

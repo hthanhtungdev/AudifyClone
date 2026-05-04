@@ -226,12 +226,11 @@ function App() {
       return;
     }
     
-    addLog(`Speaking: ${text.substring(0, 50)}...`);
+    addLog(`Speaking: ${text.substring(0, 30)}...`);
     
     // Remove highlight from previous element (if different)
     if (currentSentenceRef.current && currentSentenceRef.current !== element) {
       currentSentenceRef.current.classList.remove('speaking');
-      addLog('Removed old highlight');
     }
     
     // Store current element
@@ -240,88 +239,81 @@ function App() {
     // Cancel any current speech
     window.speechSynthesis.cancel();
     
-    // Highlight immediately (before speech starts)
+    // Add highlight class
     element.classList.add('speaking');
-    addLog(`Added 'speaking' class to ${element.tagName}`);
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     
-    // Small delay to ensure cancel completes
-    setTimeout(() => {
-      // Create and speak utterance
-      const utterance = new SpeechSynthesisUtterance(text.trim());
-      utterance.lang = 'vi-VN';
-      utterance.rate = speed;
-      utterance.pitch = 1;
-      utterance.volume = 1;
+    // Create and speak utterance
+    const utterance = new SpeechSynthesisUtterance(text.trim());
+    utterance.lang = 'vi-VN';
+    utterance.rate = speed;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    utterance.onstart = () => {
+      setIsPlaying(true);
+      addLog('▶ Playing');
+    };
+    
+    utterance.onend = () => {
+      // Remove highlight
+      element.classList.remove('speaking');
       
-      utterance.onstart = () => {
-        setIsPlaying(true);
-        addLog('Speech started');
-      };
+      // Only auto-play if enabled
+      if (!shouldAutoPlayRef.current) {
+        setIsPlaying(false);
+        return;
+      }
       
-      utterance.onend = () => {
-        // Remove highlight
-        element.classList.remove('speaking');
-        addLog('Removed highlight after speech');
-        
-        // Only auto-play if enabled
-        if (!shouldAutoPlayRef.current) {
-          setIsPlaying(false);
-          addLog('Auto-play disabled, stopping');
-          return;
+      // Find next paragraph/heading
+      let nextElement: HTMLElement | null = null;
+      let sibling = element.nextElementSibling;
+      
+      while (sibling) {
+        if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+          nextElement = sibling as HTMLElement;
+          break;
         }
-        
-        // Find next paragraph/heading
-        let nextElement: HTMLElement | null = null;
-        let sibling = element.nextElementSibling;
-        
-        while (sibling) {
-          if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
-            nextElement = sibling as HTMLElement;
+        const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+        if (child) {
+          nextElement = child as HTMLElement;
+          break;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+      
+      // If no next sibling, try parent's next sibling
+      if (!nextElement && element.parentElement) {
+        let parentSibling = element.parentElement.nextElementSibling;
+        while (parentSibling && !nextElement) {
+          if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+            nextElement = parentSibling as HTMLElement;
             break;
           }
-          const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+          const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
           if (child) {
             nextElement = child as HTMLElement;
             break;
           }
-          sibling = sibling.nextElementSibling;
+          parentSibling = parentSibling.nextElementSibling;
         }
-        
-        // If no next sibling, try parent's next sibling
-        if (!nextElement && element.parentElement) {
-          let parentSibling = element.parentElement.nextElementSibling;
-          while (parentSibling && !nextElement) {
-            if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
-              nextElement = parentSibling as HTMLElement;
-              break;
-            }
-            const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
-            if (child) {
-              nextElement = child as HTMLElement;
-              break;
-            }
-            parentSibling = parentSibling.nextElementSibling;
-          }
-        }
-        
-        if (nextElement) {
-          addLog('Auto-playing next paragraph');
-          speakElement(nextElement);
-        } else {
-          setIsPlaying(false);
-          addLog('Finished all paragraphs');
-        }
-      };
+      }
       
-      utterance.onerror = (e) => {
-        addLog(`Speech error: ${e.error}`);
+      if (nextElement) {
+        speakElement(nextElement);
+      } else {
         setIsPlaying(false);
-        element.classList.remove('speaking');
-      };
-      
-      window.speechSynthesis.speak(utterance);
-    }, 50);
+        addLog('■ Finished');
+      }
+    };
+    
+    utterance.onerror = (e) => {
+      addLog(`✗ Error: ${e.error}`);
+      setIsPlaying(false);
+      element.classList.remove('speaking');
+    };
+    
+    window.speechSynthesis.speak(utterance);
   };
 
   // Stop speaking
