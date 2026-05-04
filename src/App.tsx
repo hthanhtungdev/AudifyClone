@@ -71,7 +71,7 @@ function App() {
   useEffect(() => {
     if (content) {
       const paras = content
-        .split('\n')
+        .split(/\n\n+/) // Split by double newlines
         .map(p => p.trim())
         .filter(p => p.length > 0);
       setParagraphs(paras);
@@ -97,7 +97,27 @@ function App() {
       if (article && article.content) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = article.content;
-        text = tempDiv.textContent || '';
+        
+        // Extract paragraphs properly
+        const paragraphs: string[] = [];
+        const walker = document.createTreeWalker(
+          tempDiv,
+          NodeFilter.SHOW_ELEMENT,
+          null
+        );
+        
+        let node;
+        while (node = walker.nextNode()) {
+          const el = node as HTMLElement;
+          if (['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI'].includes(el.tagName)) {
+            const text = el.textContent?.trim();
+            if (text && text.length > 0) {
+              paragraphs.push(text);
+            }
+          }
+        }
+        
+        text = paragraphs.join('\n\n');
       } else {
         text = doc.body.textContent || '';
       }
