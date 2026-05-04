@@ -480,7 +480,7 @@ function App() {
       {/* Settings Modal */}
       {showSettings && (
         <div 
-          className="fixed inset-0 bg-black/80 z-50 flex items-end"
+          className="fixed inset-0 bg-black/80 z-[100] flex items-end"
           onClick={() => setShowSettings(false)}
         >
           <div 
