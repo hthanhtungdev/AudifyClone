@@ -1,41 +1,115 @@
 import { useState, useEffect, useRef } from 'react';
-
-import { Play, Pause, Square, Settings, Link2, Loader2, X, Plus, Minus } from 'lucide-react';
+import { Settings, Loader2, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
 function App() {
   const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
-  const [content, setContent] = useState(() => (localStorage.getItem('audify_content') || '').normalize('NFC'));
+  const [content, setContent] = useState(() => localStorage.getItem('audify_content') || '');
   const [loading, setLoading] = useState(false);
-  const [isPlaying, setIsPlayingState] = useState(false);
-  const isPlayingRef = useRef(false);
-  const setIsPlaying = (val: boolean) => {
-    setIsPlayingState(val);
-    isPlayingRef.current = val;
-  };
+  const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceName, setSelectedVoiceName] = useState(() => localStorage.getItem('audify_voice') || '');
+  const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
-  const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
-  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
-  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-  const [showHeader, setShowHeader] = useState(true);
-  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
+  const [rawHTML, setRawHTML] = useState(() => localStorage.getItem('audify_html') || ''); // Store raw HTML
 
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const webContentRef = useRef<HTMLDivElement>(null);
+  const pendingTimeoutRef = useRef<number | null>(null);
+  const isProcessingRef = useRef(false);
+  const currentSentenceRef = useRef<HTMLElement | null>(null); // Track current sentence element
+  const shouldAutoPlayRef = useRef(true); // Control auto-play behavior
 
-  const GOOGLE_TTS_ID = 'google_v_online';
-  const GOOGLE_TTS_ID_2 = 'google_v_online_2';
-  const googleAudioRef = useRef<HTMLAudioElement | null>(null);
-  const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
-  const lastScrollY = useRef(0);
-  const mainContentRef = useRef<HTMLDivElement>(null);
-  const currentSessionRef = useRef(0);
+  // Debug logger
+  const addLog = (message: string) => {
+    setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
+  };
 
+  // Register Service Worker - only in standalone mode
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    
+    if ('serviceWorker' in navigator && isStandalone) {
+      // Only register SW when running as PWA
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      addLog('Service Worker registered (PWA mode)');
+    } else {
+      addLog('Service Worker skipped (Browser mode)');
+    }
+  }, []);
 
+  // Check if running as PWA
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    
+    if (!isStandalone && isIOS) {
+      const hasSeenPrompt = localStorage.getItem('pwa_prompt_seen');
+      if (!hasSeenPrompt) {
+        setTimeout(() => setShowInstallPrompt(true), 3000);
+      }
+    }
+  }, []);
 
+  // Listen for messages from iframe (text clicked in web view)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SPEAK_TEXT') {
+        const text = event.data.text;
+        addLog(`Received text from iframe: ${text.substring(0, 50)}...`);
+        
+        // Speak the text directly
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'vi-VN';
+        utterance.rate = speed;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        utterance.onstart = () => {
+          setIsPlaying(true);
+          addLog('✓ Speaking iframe text');
+        };
+        
+        utterance.onend = () => {
+          setIsPlaying(false);
+        };
+        
+        utterance.onerror = (e) => {
+          addLog(`✗ Speech error: ${e.error}`);
+          setIsPlaying(false);
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [speed]);
 
-  // Sync state with localStorage
+  // Load voices - simplified
+  useEffect(() => {
+    const loadVoices = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      addLog(`Total voices available: ${allVoices.length}`);
+      
+      // Always use system default
+      if (!selectedVoice) {
+        setSelectedVoice('');
+        addLog('Using system default voice');
+      }
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }, [selectedVoice]);
+
+  // Save to localStorage
   useEffect(() => {
     localStorage.setItem('audify_url', url);
   }, [url]);
@@ -45,822 +119,662 @@ function App() {
   }, [content]);
 
   useEffect(() => {
+    localStorage.setItem('audify_html', rawHTML);
+  }, [rawHTML]);
+
+  useEffect(() => {
     localStorage.setItem('audify_speed', speed.toString());
   }, [speed]);
 
+  // Set HTML content once when rawHTML changes
   useEffect(() => {
-    localStorage.setItem('audify_voice', selectedVoiceName);
-  }, [selectedVoiceName]);
+    if (webContentRef.current && rawHTML) {
+      webContentRef.current.innerHTML = rawHTML;
+      addLog('HTML content set');
+    }
+  }, [rawHTML]);
 
-  // Initialize voices
-  useEffect(() => {
-    const updateVoices = () => {
-      const availableVoices = window.speechSynthesis.getVoices();
-      // Chỉ giữ lại các giọng tiếng Việt theo yêu cầu
-      const vnVoices = availableVoices.filter(v => v.lang.includes('vi'));
-      setVoices(vnVoices);
-
-        // Tự động chọn giọng Nâng cao (Premium) tốt nhất nếu chưa chọn
-        if (!selectedVoiceName && vnVoices.length > 0) {
-          const sortedBest = [...vnVoices].sort((a, b) => {
-            const vA = (a.name + a.voiceURI).toLowerCase();
-            const vB = (b.name + b.voiceURI).toLowerCase();
-            const rank = (v: string) => {
-              if (v.includes('premium')) return 3;
-              if (v.includes('enhanced') || v.includes('hq')) return 2;
-              if (v.includes('compact')) return -1;
-              return 0;
-            };
-            return rank(vB) - rank(vA);
-          });
-          
-          const bestVoice = sortedBest[0];
-          const originalIdx = vnVoices.findIndex(v => v === bestVoice);
-          setSelectedVoiceName(`${bestVoice.voiceURI}|${originalIdx}`);
-        }
-      };
-
-    updateVoices();
-    window.speechSynthesis.onvoiceschanged = updateVoices;
-    return () => {
-      window.speechSynthesis.onvoiceschanged = null;
-    };
-  }, [selectedVoiceName]);
-
+  // Fetch content
   const fetchContent = async () => {
     if (!url) return;
+    
     setLoading(true);
     setContent('');
+    addLog(`Fetching: ${url}`);
+    
     try {
-      // Sử dụng local proxy tự tạo trên server Vite để không bao giờ bị chặn
       const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
       const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const htmlText = await response.text();
+      addLog(`Received ${htmlText.length} characters`);
 
-      if (!htmlText) throw new Error("Không thể tải trang");
+      if (!htmlText || htmlText.length < 100) {
+        throw new Error('Nội dung quá ngắn hoặc trống');
+      }
+
+      // Store raw HTML for rendering
+      setRawHTML(htmlText);
 
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
-
+      
+      // Try Readability first
       const reader = new Readability(doc);
       const article = reader.parse();
 
-      let finalString = '';
-
-      if (article && article.content) {
-        // Thêm newline cho các thẻ block để giữ nguyên paragraph khi lấy text
-        let html = article.content;
-        html = html.replace(/<br\s*\/?>/gi, '\n');
-        html = html.replace(/<\/p>/gi, '\n\n');
-        html = html.replace(/<\/(div|h1|h2|h3|h4|h5|h6|li)>/gi, '\n');
-
+      let text = '';
+      
+      if (article && article.content && article.content.length > 100) {
+        addLog('Using Readability parser');
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = html;
-        const text = tempDiv.textContent || tempDiv.innerText || '';
-        finalString = text.replace(/\n\s*\n/g, '\n\n').trim();
+        tempDiv.innerHTML = article.content;
+        
+        // Extract paragraphs properly
+        const paragraphs: string[] = [];
+        const walker = document.createTreeWalker(
+          tempDiv,
+          NodeFilter.SHOW_ELEMENT,
+          null
+        );
+        
+        let node;
+        while (node = walker.nextNode()) {
+          const el = node as HTMLElement;
+          if (['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI'].includes(el.tagName)) {
+            const text = el.textContent?.trim();
+            if (text && text.length > 0) {
+              paragraphs.push(text);
+            }
+          }
+        }
+        
+        text = paragraphs.join('\n\n');
+      } else {
+        // Fallback: get all text from body
+        addLog('Using fallback: body text');
+        text = doc.body.textContent || '';
       }
 
-      if (finalString.length > 50) {
-        setContent(finalString.normalize("NFC"));
-      } else {
-        // Fallback: nếu Readability không hiểu được structure (như Docs hay bị)
-        const text = doc.body.innerText.replace(/\n\s*\n/g, '\n\n').trim();
-        setContent(text.normalize("NFC"));
+      if (!text || text.trim().length < 50) {
+        throw new Error('Không tìm thấy nội dung văn bản. URL có thể không hợp lệ hoặc bị chặn.');
       }
-    } catch (err: any) {
-      setContent('Lỗi tải văn bản: ' + err.message);
+
+      setContent(text.trim());
+      addLog(`✓ Loaded ${text.length} characters`);
+      
+    } catch (err) {
+      const errorMsg = (err as Error).message;
+      addLog(`✗ Error: ${errorMsg}`);
+      alert('❌ Lỗi tải nội dung:\n\n' + errorMsg + '\n\nGợi ý:\n- Kiểm tra URL có đúng không\n- Thử URL khác\n- Một số trang web có thể bị chặn');
+      setContent('');
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePlayPause = () => {
-    if (isPlaying) {
-      handlePause();
-    } else {
-      setIsAutoScrollEnabled(true);
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-        setIsPlaying(true);
-      } else {
-        // Resume mà không được nhảy về đầu đoạn (nên truyền false)
-        playFromStart(highlightCharIndex !== -1 ? highlightCharIndex : 0, false);
-      }
-    }
-  };
-
-  const handlePause = () => {
-    window.speechSynthesis.cancel();
-    if (googleAudioRef.current) {
-      googleAudioRef.current.pause();
-      // Xóa các listeners để tránh gậy nhiễu phiên sau
-      googleAudioRef.current.onended = null;
-      googleAudioRef.current.onerror = null;
-      googleAudioRef.current.onplay = null;
-      googleAudioRef.current.onplaying = null;
-      googleAudioRef.current.onpause = null;
-      googleAudioRef.current.ontimeupdate = null;
-    }
-    if (prefetchAudioRef.current) {
-      prefetchAudioRef.current.pause();
-      prefetchAudioRef.current.src = "";
-    }
-    setIsPlaying(false);
-  };
-
-  const updateSpeed = (newSpeed: number) => {
-    setSpeed(newSpeed);
-    if (isPlaying) {
-      handlePause();
-    }
-  };
-
-  const playFromStart = (startIndex: number = 0, shouldJumpToStart: boolean = true) => {
-    if (!content) return;
-    setIsAutoScrollEnabled(true); 
-
-    let actualStartIndex = startIndex;
-
-    if (shouldJumpToStart) {
-        // Tự động tìm vị trí đầu đoạn văn (Paragraph Start)
-        let paragraphStartIndex = content.lastIndexOf('\n', startIndex - 1);
-        paragraphStartIndex = paragraphStartIndex === -1 ? 0 : paragraphStartIndex + 1;
-        actualStartIndex = paragraphStartIndex;
-    }
-
-    // Cập nhật Highlight ngay lập tức để UI nhảy tới đoạn mới tức thì
-    setHighlightCharIndex(actualStartIndex);
-
-    // Rung nhẹ phản hồi (Haptic peak) nếu thiết bị hỗ trợ
-    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate(10);
-    }
-
-    // Mở khóa Audio trên iOS ngay lập tức
-    const wakeUp = new SpeechSynthesisUtterance("");
-    window.speechSynthesis.speak(wakeUp);
-
-    if (googleAudioRef.current && (selectedVoiceName === GOOGLE_TTS_ID || selectedVoiceName === GOOGLE_TTS_ID_2)) {
-      // Chỉ play để unlock nếu đang dùng Online voice, nhưng KHÔNG pause lại ngay lập tức nếu đang phát
-      googleAudioRef.current.play().catch(() => {});
-    }
+  // Speak a specific element
+  const speakElement = (element: HTMLElement) => {
+    const text = element.textContent || '';
     
-    // Nhảy tới từ mới lập tức
-    if (mainContentRef.current) {
-      const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement;
-      if (activeElement) {
-        const container = mainContentRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = activeElement.getBoundingClientRect();
-        
-        // Tính toán vị trí để từ được chọn nằm ở khoảng 1/3 màn hình từ trên xuống
-        const targetTop = container.scrollTop + (elementRect.top - containerRect.top) - (containerRect.height / 3);
-        
-        container.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' });
-        lastScrollTime.current = Date.now(); // Reset timer cuộn tự động ngay sau khi nhảy
-      }
-    }
-
-    if (selectedVoiceName === GOOGLE_TTS_ID || selectedVoiceName === GOOGLE_TTS_ID_2) {
-      handlePlayGoogleOnline(actualStartIndex);
+    if (!text || text.trim().length < 10) {
+      addLog('Text too short, skipping');
       return;
     }
     
-    window.speechSynthesis.cancel();
-
-    const textToSpeak = content.slice(actualStartIndex);
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-
-
-    const parts = selectedVoiceName.split('|');
-    const targetUri = parts[0];
-    const targetIdx = parts.length > 1 ? parseInt(parts[1], 10) : -1;
-
-    let voice: SpeechSynthesisVoice | undefined;
+    addLog(`Speaking: ${text.substring(0, 30)}...`);
     
-    // Tìm chính xác theo Index nếu có
-    if (targetIdx !== -1 && voices[targetIdx] && voices[targetIdx].voiceURI === targetUri) {
-      voice = voices[targetIdx];
-    } else {
-      // Fallback
-      voice = voices.find(v => v.voiceURI === targetUri) ||
-        voices.find(v => v.name === targetUri) ||
-        voices[0];
+    // Remove highlight from previous element (if different)
+    if (currentSentenceRef.current && currentSentenceRef.current !== element) {
+      currentSentenceRef.current.classList.remove('speaking');
     }
-
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
-    }
-
+    
+    // Store current element
+    currentSentenceRef.current = element;
+    
+    // Cancel any current speech
+    window.speechSynthesis.cancel();
+    
+    // Add highlight class
+    element.classList.add('speaking');
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Create and speak utterance
+    const utterance = new SpeechSynthesisUtterance(text.trim());
+    utterance.lang = 'vi-VN';
     utterance.rate = speed;
     utterance.pitch = 1;
-
-    utterance.onend = () => {
-      setIsPlaying(false);
-      // Giữ highlightCharIndex để có thể đọc tiếp từ đó
-    };
-
-    utterance.onerror = () => {
-      setIsPlaying(false);
-      // Giữ highlightCharIndex để có thể đọc tiếp sau khi gặp lỗi
-    };
-
+    utterance.volume = 1;
+    
     utterance.onstart = () => {
       setIsPlaying(true);
+      addLog('▶ Playing');
     };
-
-    utterance.onpause = () => {
-      setIsPlaying(false);
-    };
-
-    utterance.onresume = () => {
-      setIsPlaying(true);
-    };
-
-    // Theo dõi vị trí đang đọc để highlight
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        // Cộng thêm actualStartIndex để highlight đúng vị trí trong content gốc
-        setHighlightCharIndex(event.charIndex + actualStartIndex);
-      }
-    };
-
-    // Debounce cancel/speak cực thấp để phản hồi ngay lập tức
-    setTimeout(() => {
-      if (isPlayingRef.current || startIndex > 0) { 
-        window.speechSynthesis.speak(utterance);
-        setIsPlaying(true);
-      }
-    }, 10);
-  };
-
-  const handlePlayGoogleOnline = (startIndex: number) => {
-    window.speechSynthesis.cancel();
-    setHighlightCharIndex(startIndex); // Cập nhật tức thì
-    setIsPlaying(true);
-    const sessionId = ++currentSessionRef.current;
-    console.log(`[TTS] New Session: ${sessionId}, startIndex: ${startIndex}`);
-
     
-    // Chia văn bản thành các đoạn nhỏ dưới 180 ký tự (Giới hạn của Google TTS)
-    // Sử dụng Regex để giữ nguyên toàn bộ ký tự (bao gồm cả khoảng trắng thừa) nhằm đồng bộ highlight 100%
-    const text = content.slice(startIndex);
-    const tokens = text.match(/\S+|\s+/g) || [];
-    const chunks: string[] = [];
-    let currentChunk = "";
-    
-    for (const token of tokens) {
-      if ((currentChunk + token).length < 180) {
-        currentChunk += token;
-      } else {
-        if (currentChunk) chunks.push(currentChunk);
-        currentChunk = token;
-      }
-    }
-    if (currentChunk) chunks.push(currentChunk);
-    
-    let currentChunkIndex = 0;
-    let accumulatedChars = startIndex;
-    let isProcessingNext = false; // Khóa bảo vệ để tránh Race Condition (chạy song song 2 luồng)
-    
-    // KHÔNG pause ở đây để tránh interrupt iOS
-    if (googleAudioRef.current) {
-      console.log(`[TTS] Chunks count: ${chunks.length}`);
-      googleAudioRef.current.play().catch(() => {});
-    }
-
-    const playNextChunk = () => {
-      if (sessionId !== currentSessionRef.current || isProcessingNext) return;
-      isProcessingNext = true; // Khóa luồng
-
-      if (currentChunkIndex >= chunks.length || !isPlayingRef.current) {
-        if (sessionId === currentSessionRef.current) setIsPlaying(false);
-        isProcessingNext = false;
-        return;
-      }
-
-      const chunk = chunks[currentChunkIndex];
-      const audio = googleAudioRef.current;
-      if (!audio) {
+    utterance.onend = () => {
+      // Remove highlight
+      element.classList.remove('speaking');
+      
+      // Only auto-play if enabled
+      if (!shouldAutoPlayRef.current) {
         setIsPlaying(false);
-        isProcessingNext = false;
         return;
       }
       
-      let retryCount = 0;
-      const tl = selectedVoiceName === GOOGLE_TTS_ID_2 ? 'vi-VN' : 'vi';
-      const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk)}&tl=${tl}&client=tw-ob`;
-      const proxiedUrl = `/api/proxy?url=${encodeURIComponent(ttsUrl)}`;
-
-      console.log(`[TTS] Playing Chunk ${currentChunkIndex}: "${chunk.slice(0, 20)}..."`);
-
-      audio.onplay = null;
-      audio.onplaying = null;
-      audio.onpause = null;
-      audio.onended = null;
-      audio.onerror = null;
-      audio.ontimeupdate = null;
-
-      audio.src = proxiedUrl;
-      audio.playbackRate = speed;
-      audio.load(); // Đảm bảo nạp dữ liệu mới trên iOS
-      isProcessingNext = false; // Mở khóa sau khi nạp xong src và gắn listeners mới
+      // Find next paragraph/heading
+      let nextElement: HTMLElement | null = null;
+      let sibling = element.nextElementSibling;
       
-      audio.onplay = () => {
-        if (sessionId !== currentSessionRef.current) return;
-        setHighlightCharIndex(accumulatedChars);
-      };
-
-      // Đồng bộ nút Pause/Play dựa trên trạng thái thực của phần cứng (iOS Safari Fix)
-      audio.onplaying = () => {
-        if (sessionId === currentSessionRef.current) setIsPlaying(true);
-      };
-      audio.onpause = () => {
-        if (sessionId === currentSessionRef.current && !audio.ended) setIsPlaying(false);
-      };
-
-      // Giả lập highlight từng từ dựa trên tiến trình phát của file Audio
-      let lastUpdate = 0;
-      audio.ontimeupdate = () => {
-        if (sessionId !== currentSessionRef.current) return;
-        const now = Date.now();
-        if (now - lastUpdate < 100) return; 
-        lastUpdate = now;
-
-        // Nếu âm thanh đang phát (duration > 0), LUÔN highlight bất kể trạng thái UI (để tránh bị "đứng hình")
-        if (!audio.duration || audio.paused) return;
-        
-        const progress = audio.currentTime / audio.duration;
-        const charIndexInChunk = Math.floor(progress * chunk.length);
-        
-        const lastSpace = chunk.lastIndexOf(' ', charIndexInChunk);
-        const wordStart = lastSpace === -1 ? 0 : lastSpace + 1;
-        
-        setHighlightCharIndex(accumulatedChars + wordStart);
-      };
-
-      // Tải trước (Pre-fetch) đoạn tiếp theo để tránh khựng
-      if (currentChunkIndex + 1 < chunks.length && prefetchAudioRef.current) {
-        const nextChunk = chunks[currentChunkIndex + 1];
-        const nextTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(nextChunk)}&tl=${tl}&client=tw-ob`;
-        prefetchAudioRef.current.src = `/api/proxy?url=${encodeURIComponent(nextTtsUrl)}`;
-        prefetchAudioRef.current.load();
-      }
-
-      audio.onended = () => {
-        if (sessionId !== currentSessionRef.current) return;
-        console.log(`[TTS] Chunk ${currentChunkIndex} ended, moving to next.`);
-        accumulatedChars += chunk.length;
-        currentChunkIndex++;
-        playNextChunk();
-      };
-
-      audio.onerror = (e) => {
-        if (sessionId !== currentSessionRef.current) return;
-        console.error(`[TTS] ERROR at Chunk ${currentChunkIndex}`, e);
-        
-        if (retryCount < 1) {
-          retryCount++;
-          console.log(`[TTS] Retrying Chunk ${currentChunkIndex}... (Lần ${retryCount})`);
-          setTimeout(() => {
-            if (sessionId === currentSessionRef.current) audio.play().catch(() => {});
-          }, 1000);
-        } else {
-          console.warn(`[TTS] Skipping Chunk ${currentChunkIndex} due to repeated errors.`);
-          accumulatedChars += chunk.length;
-          currentChunkIndex++;
-          playNextChunk(); 
+      while (sibling) {
+        if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+          nextElement = sibling as HTMLElement;
+          break;
         }
-      };
-
-      audio.play().catch((err) => {
-        console.warn(`[TTS] Play Error (Autoplay?):`, err);
-        // audio.onerror sẽ xử lý việc retry/skip
-      });
+        const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+        if (child) {
+          nextElement = child as HTMLElement;
+          break;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+      
+      // If no next sibling, try parent's next sibling
+      if (!nextElement && element.parentElement) {
+        let parentSibling = element.parentElement.nextElementSibling;
+        while (parentSibling && !nextElement) {
+          if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+            nextElement = parentSibling as HTMLElement;
+            break;
+          }
+          const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+          if (child) {
+            nextElement = child as HTMLElement;
+            break;
+          }
+          parentSibling = parentSibling.nextElementSibling;
+        }
+      }
+      
+      if (nextElement) {
+        speakElement(nextElement);
+      } else {
+        setIsPlaying(false);
+        addLog('■ Finished');
+      }
     };
-
-    playNextChunk();
+    
+    utterance.onerror = (e) => {
+      addLog(`✗ Error: ${e.error}`);
+      setIsPlaying(false);
+      element.classList.remove('speaking');
+    };
+    
+    window.speechSynthesis.speak(utterance);
   };
 
-  // Heartbeat để tránh Chrome/iOS tự động dừng nói sau 15s (lỗi Web Speech API)
-  // CHỈ chạy khi đang dùng giọng hệ thống (không phải Google Online)
-  useEffect(() => {
-    let interval: any;
-    const isSystemVoice = selectedVoiceName !== GOOGLE_TTS_ID && selectedVoiceName !== GOOGLE_TTS_ID_2;
-    
-    if (isPlaying && isSystemVoice) {
-      interval = setInterval(() => {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      }, 10000); // 10s một lần
+  // Stop speaking
+  const stopSpeaking = () => {
+    // Clear any pending timeout
+    if (pendingTimeoutRef.current) {
+      clearTimeout(pendingTimeoutRef.current);
+      pendingTimeoutRef.current = null;
     }
-    return () => clearInterval(interval);
-  }, [isPlaying, selectedVoiceName]);
+    
+    window.speechSynthesis.cancel();
+    setIsPlaying(false);
+    
+    // Keep highlight on current element (don't clear it)
+    // This helps user see where they paused
+    
+    utteranceRef.current = null;
+    isProcessingRef.current = false;
+    addLog('Paused - position saved with highlight');
+  };
 
-  // Tối ưu cuộn tự động (Comfort Zone V6) - Sửa triệt để lỗi nhảy giật/oscillation trên iPhone
-  const lastScrollTime = useRef(0);
-  const isScrollingToRef = useRef(false);
+  // Resume speaking from current position
+  const resumeSpeaking = () => {
+    if (!currentSentenceRef.current) {
+      addLog('No saved position, starting from beginning');
+      // Find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
+      return;
+    }
+    
+    addLog('Resuming from saved position');
+    // Resume the saved element
+    shouldAutoPlayRef.current = true;
+    speakElement(currentSentenceRef.current);
+  };
 
-  useEffect(() => {
-    if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
-      const now = Date.now();
-      // Throttle animation cuộn tự động (1.5s một lần) để tránh giật hình
-      if (now - lastScrollTime.current < 1500) return; 
+  // Handle play/pause
+  const handlePlayPause = () => {
+    addLog(`Play/Pause clicked, isPlaying: ${isPlaying}`);
+    
+    if (isPlaying) {
+      stopSpeaking();
+    } else {
+      resumeSpeaking();
+    }
+  };
 
-      const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
-      if (activeElement) {
-        const container = mainContentRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = activeElement.getBoundingClientRect();
-        const relativeTop = elementRect.top - containerRect.top;
-
-        // "Vùng an toàn" (Comfort Zone): Chỉ cuộn nếu từ đang đọc vượt quá 40% màn hình từ trên xuống
-        // Điều này giúp giữ vệt highlight luôn ở nửa trên màn hình, dễ đọc và không giật lag.
-        if (relativeTop > containerRect.height * 0.4 || relativeTop < 50) {
-          const targetTop = container.scrollTop + relativeTop - (containerRect.height / 3);
-          
-          isScrollingToRef.current = true;
-          container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
-          
-          lastScrollTime.current = now;
-          setTimeout(() => { isScrollingToRef.current = false; }, 800);
+  // Handle previous
+  const handlePrevious = () => {
+    addLog('Previous clicked');
+    
+    // Stop current speech
+    window.speechSynthesis.cancel();
+    
+    // Clear current highlight
+    if (currentSentenceRef.current) {
+      currentSentenceRef.current.classList.remove('speaking');
+    }
+    
+    if (!currentSentenceRef.current) {
+      // If no current, find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
+      return;
+    }
+    
+    // Find previous paragraph
+    let prevElement: HTMLElement | null = null;
+    let sibling = currentSentenceRef.current.previousElementSibling;
+    
+    while (sibling) {
+      if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+        prevElement = sibling as HTMLElement;
+        break;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+    
+    // If no previous sibling, try parent's previous sibling
+    if (!prevElement && currentSentenceRef.current.parentElement) {
+      let parentSibling = currentSentenceRef.current.parentElement.previousElementSibling;
+      while (parentSibling && !prevElement) {
+        if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+          prevElement = parentSibling as HTMLElement;
+          break;
         }
+        const paragraphs = parentSibling.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+        if (paragraphs.length > 0) {
+          prevElement = paragraphs[paragraphs.length - 1] as HTMLElement;
+          break;
+        }
+        parentSibling = parentSibling.previousElementSibling;
       }
     }
-  }, [highlightCharIndex, isAutoScrollEnabled]);
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const currentScrollY = e.currentTarget.scrollTop;
     
-    // Nếu người dùng đang tự cuộn (không phải do auto-scroll trigger), thì tạm tắt auto-scroll
-    if (!isScrollingToRef.current && isPlaying && isAutoScrollEnabled) {
-      // Chỉ tắt nếu khoảng cách thay đổi đủ lớn (ví dụ > 5px) để tránh nhảy trạng thái do rung nhẹ
-      if (Math.abs(currentScrollY - lastScrollY.current) > 5) {
-        setIsAutoScrollEnabled(false);
-      }
-    }
-
-    // Hiện nút cuộn lên đầu khi cuộn qua 300px
-    setShowScrollTop(currentScrollY > 300);
-
-    // Logic ẩn/hiện header dựa trên hướng cuộn
-    if (currentScrollY > lastScrollY.current && currentScrollY > 100) {
-      // Cuộn xuống -> Ẩn
-      setShowHeader(false);
-    } else if (currentScrollY < lastScrollY.current || currentScrollY < 10) {
-      // Cuộn lên hoặc về đầu -> Hiện
-      setShowHeader(true);
-    }
-    
-    lastScrollY.current = currentScrollY;
-  };
-
-  const scrollToTop = () => {
-    if (mainContentRef.current) {
-      mainContentRef.current.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-      setShowHeader(true);
+    if (prevElement) {
+      addLog('Found previous paragraph');
+      shouldAutoPlayRef.current = true;
+      speakElement(prevElement);
+    } else {
+      addLog('No previous paragraph found');
+      setIsPlaying(false);
     }
   };
 
-
-  const handleStop = () => {
-    handlePause();
-    setHighlightCharIndex(-1);
+  // Handle next
+  const handleNext = () => {
+    addLog('Next clicked');
+    
+    // Stop current speech
+    window.speechSynthesis.cancel();
+    
+    // Clear current highlight
+    if (currentSentenceRef.current) {
+      currentSentenceRef.current.classList.remove('speaking');
+    }
+    
+    if (!currentSentenceRef.current) {
+      // If no current, find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
+      return;
+    }
+    
+    // Find next paragraph
+    let nextElement: HTMLElement | null = null;
+    let sibling = currentSentenceRef.current.nextElementSibling;
+    
+    while (sibling) {
+      if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+        nextElement = sibling as HTMLElement;
+        break;
+      }
+      const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+      if (child) {
+        nextElement = child as HTMLElement;
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    
+    // If no next sibling, try parent's next sibling
+    if (!nextElement && currentSentenceRef.current.parentElement) {
+      let parentSibling = currentSentenceRef.current.parentElement.nextElementSibling;
+      while (parentSibling && !nextElement) {
+        if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+          nextElement = parentSibling as HTMLElement;
+          break;
+        }
+        const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+        if (child) {
+          nextElement = child as HTMLElement;
+          break;
+        }
+        parentSibling = parentSibling.nextElementSibling;
+      }
+    }
+    
+    if (nextElement) {
+      addLog('Found next paragraph');
+      shouldAutoPlayRef.current = true;
+      speakElement(nextElement);
+    } else {
+      addLog('No next paragraph found');
+      setIsPlaying(false);
+    }
   };
 
   return (
-    <div className="w-full h-screen bg-black text-gray-200 flex flex-col font-sans">
-      <header className={`bg-gray-900 border-b border-gray-800 flex items-center justify-between transition-all duration-300 overflow-hidden ${showHeader ? 'h-16 p-4 opacity-100' : 'h-0 p-0 opacity-0 border-0'}`}>
-        <h1 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
-          <span className="bg-blue-600 p-1.5 rounded-lg text-white">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-              <rect x="3" y="8" width="4" height="8" rx="2" />
-              <rect x="10" y="4" width="4" height="16" rx="2" />
-              <rect x="17" y="10" width="4" height="4" rx="2" />
-            </svg>
-          </span>
-          Audify Clone
-        </h1>
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className={`p-2 rounded-full transition-colors ${showSettings ? 'bg-blue-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
-        >
-          <Settings className="w-6 h-6" />
-        </button>
-      </header>
-
-
-      {showSettings && (
-        <div className="p-3 bg-gray-900 border-b border-gray-800 animate-in slide-in-from-top duration-200">
-          <div className="max-w-2xl mx-auto flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
-            </div>
-            <select
-              value={selectedVoiceName}
-              onChange={(e) => setSelectedVoiceName(e.target.value)}
-              className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none text-sm"
-            >
-              <option value="">-- Mặc định thiết bị --</option>
-              <option value={GOOGLE_TTS_ID}>Google Trực tuyến (Giọng chuẩn ⚡)</option>
-              <option value={GOOGLE_TTS_ID_2}>Google Trực tuyến (Giọng 2 ✨)</option>
-              
-              {[...voices]
-                .filter(v => !v.name.includes('Google') && !v.name.includes('Microsoft Online'))
-                .map((v, originalIdx) => {
-                  const vVal = (v.name + v.voiceURI).toLowerCase();
-                  const isPremium = /\b(premium|enhanced|hq|high|natural|pro)\b/i.test(vVal);
-                  const isCompact = vVal.includes('compact');
-                  
-                  let displayName = v.name
-                    .replace('Microsoft ', '')
-                    .replace(/\(Enhanced\)/i, '')
-                    .replace(/\(Premium\)/i, '')
-                    .replace(/\(Compact\)/i, '')
-                    .replace(' (Natural)', '')
-                    .trim();
-
-                  if (isPremium) {
-                    displayName += ' (Nâng cao ✨)';
-                  } else if (isCompact) {
-                    displayName += ' (Tiêu chuẩn)';
-                  }
-
-                  return { v, displayName, isPremium, isCompact, value: `${v.voiceURI}|${originalIdx}` };
-                })
-                .sort((a, b) => {
-                  const rank = (item: any) => {
-                    if (item.isPremium) return 2;
-                    if (item.isCompact) return -1;
-                    return 0;
-                  };
-                  const rA = rank(a);
-                  const rB = rank(b);
-                  if (rA !== rB) return rB - rA;
-                  return a.displayName.localeCompare(b.displayName);
-                })
-                .map((item, _, arr) => {
-                  let finalLabel = item.displayName;
-                  
-                  // Nếu bị trùng tên hiển thị (như 2 Linh Tiêu Chuẩn), đánh số để phân biệt
-                  const sameNameIndices = arr.filter(ai => ai.displayName === item.displayName);
-                  if (sameNameIndices.length > 1) {
-                    const orderInSameName = sameNameIndices.findIndex(ai => ai.value === item.value) + 1;
-                    finalLabel += ` #${orderInSameName}`;
-                    
-                    // Thêm gợi ý URI nếu vẫn bị trùng lặp
-                    const uriHint = item.v.voiceURI.split('.').pop() || '';
-                    if (uriHint) {
-                      finalLabel += ` [..${uriHint.slice(-8)}]`;
-                    }
-                  }
-
-                  return (
-                    <option key={item.value} value={item.value}>
-                      {finalLabel}
-                    </option>
-                  );
-                })
-              }
-            </select>
-          </div>
-        </div>
-      )}
-
-      {/* Nội dung chính */}
-      <main 
-        ref={mainContentRef}
-        className="flex-1 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar relative"
-        onScroll={handleScroll}
-        onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
-        onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
-      >
-        <div className={`w-full max-w-2xl transition-all duration-300 ${showHeader ? 'translate-y-0 opacity-100 scale-100 mb-4' : '-translate-y-4 opacity-0 scale-95 pointer-events-none h-0 mb-0'}`}>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-2xl">
-            <div className="flex gap-2">
-
-            <div className="relative flex-1">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Link2 className="h-5 w-5 text-gray-500" />
-              </div>
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="Dán URL Google Docs/Truyện..."
-                className="w-full pl-10 pr-10 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
-              />
-              {url && (
-                <button
-                  onClick={() => setUrl('')}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
-                  title="Xóa URL"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={fetchContent}
-              disabled={loading}
-              className="px-5 py-3 bg-blue-600 disabled:bg-blue-800 disabled:text-gray-400 hover:bg-blue-500 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2 text-sm"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Tải chữ"}
-            </button>
-          </div>
+    <div className="h-screen flex flex-col bg-gray-950 text-white">
+      {/* Top Bar */}
+      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 p-3">
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            placeholder="Nhập URL..."
+            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+            onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
+          />
+          <button
+            onClick={fetchContent}
+            disabled={loading}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Tải'}
+          </button>
         </div>
       </div>
 
-        <div className="w-full max-w-3xl mb-32 lg:mb-10 px-2 lg:px-4">
-          {content ? (
-            <div className="text-base leading-[1.6] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
-              {/* Render content with HTML paragraphs and highlighting */}
-              {(() => {
-                let currentGlobalIndex = 0;
-                return content.split(/([\r\n]+)/).map((segment, segIndex) => {
-                  if (/^[\r\n]+$/.test(segment)) {
-                    currentGlobalIndex += segment.length;
-                    return null;
-                  }
-
-                  const pStartIdx = currentGlobalIndex;
-                  const pEndIdx = pStartIdx + segment.length;
-                  const isParagraphActive = highlightCharIndex >= pStartIdx && highlightCharIndex < pEndIdx;
-
-                  return (
-                    <p 
-                      key={segIndex} 
-                      className={`mb-6 text-left whitespace-pre-wrap break-words px-4 py-1 transition-all duration-300 rounded-xl will-change-transform ${isParagraphActive ? "border-l-4 border-emerald-500/50 pl-4" : "border-l-4 border-transparent pl-4"}`}
-                    >
-                      <span className={`${isParagraphActive ? "bg-emerald-600/20 ring-4 ring-emerald-600/20 rounded-sm" : ""}`} style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>
-                      {segment.split(/(\s+)/).map((part, i) => {
-                        const wordStartIdx = currentGlobalIndex;
-                        const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
-                        currentGlobalIndex += part.length;
-                        const isWhitespace = /^\s+$/.test(part);
-                        return (
-                          <span
-                            key={i}
-                            onClick={(e) => {
-                              if (e.detail > 2) return; 
-                              playFromStart(wordStartIdx);
-                            }}
-                            data-index={wordStartIdx}
-                            className={`cursor-pointer transition-all duration-200 hover:bg-white/10 rounded select-none ${!isWhitespace ? "px-1" : "px-0"} ${isHighlighted ? "bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)] font-bold scale-105" : ""}`}
-                            data-highlight={isHighlighted ? "true" : "false"}
-                          >
-                            {part}
-                          </span>
-                        );
-                      })}
-                      </span>
-                    </p>
-                  );
-                });
-              })()}
+      {/* Content - Render HTML directly with click-to-speak */}
+      <div 
+        ref={contentRef}
+        className="flex-1 overflow-y-auto relative bg-black"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        {rawHTML ? (
+          <div
+            ref={webContentRef}
+            className="w-full h-full web-content"
+            onClick={(e) => {
+              const target = e.target as HTMLElement;
+              
+              // Get the closest text container
+              let textElement: HTMLElement | null = null;
+              
+              if (target.tagName === 'P' || target.tagName.match(/^H[1-6]$/)) {
+                textElement = target;
+              } else if (target.closest('p, h1, h2, h3, h4, h5, h6, li')) {
+                textElement = target.closest('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+              }
+              
+              if (textElement) {
+                shouldAutoPlayRef.current = true;
+                speakElement(textElement);
+              }
+            }}
+            style={{
+              cursor: 'pointer'
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500 p-4">
+            <div className="text-center">
+              <p className="text-lg mb-2">Nhập URL và nhấn Tải</p>
+              <p className="text-sm text-gray-600">Click vào văn bản để nghe</p>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-600">
-              <Link2 className="w-12 h-12 mb-4 opacity-20" />
-              <p className="text-center font-medium">Chưa có nội dung. Hãy dán URL và ấn "Tải chữ"!</p>
-            </div>
-          )}
-        </div>
-
-        {/* Floating Resume Scroll Button */}
-        {!isAutoScrollEnabled && isPlaying && (
-          <button 
-            onClick={() => setIsAutoScrollEnabled(true)}
-            className="fixed bottom-32 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg animate-in fade-in slide-in-from-bottom duration-300 flex items-center gap-2 text-sm font-bold z-10"
-          >
-            Tiếp tục cuộn tự động
-          </button>
+          </div>
         )}
-
-        {/* Scroll To Top Button */}
-        {showScrollTop && (
-          <button 
-            onClick={scrollToTop}
-            className={`fixed ${!isAutoScrollEnabled && isPlaying ? 'bottom-44' : 'bottom-32'} right-6 bg-gray-800 text-white p-4 rounded-full shadow-2xl hover:bg-gray-700 transition-all active:scale-90 z-20 border border-gray-700`}
-            title="Cuộn lên đầu"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6">
-              <path d="M18 15l-6-6-6 6" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+        
+        {/* Hint */}
+        {rawHTML && !isPlaying && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white px-4 py-2 rounded-full text-sm shadow-lg backdrop-blur z-10 pointer-events-none">
+            💡 Click vào văn bản để nghe
+          </div>
         )}
-      </main>
+      </div>
 
-
-      {/* Media Controller */}
-      <footer className="bg-gray-900 border-t border-gray-800 p-3 pb-6 fixed bottom-0 left-0 right-0 z-10 lg:static">
-        <div className="max-w-md mx-auto flex items-center justify-between px-4">
+      {/* Bottom Controls */}
+      <div 
+        className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-3"
+        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+      >
+        <div className="max-w-md mx-auto flex items-center justify-center gap-3">
           <button
-            onClick={handleStop}
-            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 transition-transform active:scale-95 text-gray-300"
+            onClick={handlePrevious}
+            disabled={!rawHTML}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
-            <Square className="w-5 h-5 fill-current" />
+            <SkipBack className="w-5 h-5" />
           </button>
 
           <button
             onClick={handlePlayPause}
-            className="p-4 rounded-full bg-blue-600 hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] transition-transform active:scale-95 text-white mx-4"
+            disabled={!rawHTML}
+            className="p-4 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-30 transition-all shadow-lg flex-shrink-0"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             {isPlaying ? (
-              <Pause className="w-8 h-8 fill-current" />
+              <Pause className="w-6 h-6 fill-current" />
             ) : (
-              <Play className="w-8 h-8 fill-current ml-1" />
+              <Play className="w-6 h-6 fill-current" />
             )}
           </button>
 
+          <button
+            onClick={handleNext}
+            disabled={!rawHTML}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <SkipForward className="w-5 h-5" />
+          </button>
 
-          <div className="relative">
-            {showSpeedMenu && (
-              <div className="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowSpeedMenu(false)}>
-                <div 
-                  className="bg-gray-900 border border-gray-800 p-6 rounded-t-3xl sm:rounded-2xl shadow-2xl w-full max-w-sm z-[110] animate-in slide-in-from-bottom duration-300"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-lg text-white">Tốc độ đọc</h3>
-                    <span className="bg-blue-600 px-3 py-1 rounded-full text-white font-bold text-sm">
-                      {Number(speed.toFixed(2))}x
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-4 mb-8">
-                    <button 
-                      onClick={() => updateSpeed(Math.max(0.5, Number((speed - 0.05).toFixed(2))))}
-                      className="p-3 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all text-gray-300"
-                      title="Giảm 0.05"
-                    >
-                      <Minus className="w-5 h-5" />
-                    </button>
-                    
-                    <input 
-                      type="range" 
-                      min="0.5" 
-                      max="3" 
-                      step="0.05" 
-                      value={speed}
-                      onChange={(e) => {
-                        setSpeed(parseFloat(e.target.value));
-                        if (isPlaying) handlePause();
-                      }}
-                      className="flex-1 h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all flex-shrink-0"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <Settings className="w-5 h-5" />
+          </button>
 
-                    <button 
-                      onClick={() => updateSpeed(Math.min(3, Number((speed + 0.05).toFixed(2))))}
-                      className="p-3 bg-gray-800 rounded-xl hover:bg-gray-700 active:scale-95 transition-all text-gray-300"
-                      title="Tăng 0.05"
-                    >
-                      <Plus className="w-5 h-5" />
-                    </button>
-                  </div>
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all flex-shrink-0"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+            title="Debug"
+          >
+            <span className="text-sm">🐛</span>
+          </button>
+        </div>
+      </div>
 
-                  <div className="grid grid-cols-4 gap-3">
-                    {[1, 1.2, 1.5, 2].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => {
-                          updateSpeed(s);
-                          setShowSpeedMenu(false);
-                        }}
-                        className={`py-3 px-2 rounded-xl text-sm font-bold transition-all ${
-                          speed === s
-                            ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40"
-                            : "bg-gray-800/50 text-gray-400 hover:bg-gray-800"
-                        }`}
-                      >
-                        {s}x
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+      {/* Debug Panel */}
+      {showDebug && (
+        <div className="fixed top-16 left-2 right-2 bg-black/95 border border-green-500 rounded-lg p-3 z-50 max-h-64 overflow-y-auto text-xs font-mono">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-green-400 font-bold">DEBUG LOG</span>
+            <button 
+              onClick={() => setDebugLogs([])}
+              className="text-red-400 text-xs"
+            >
+              Clear
+            </button>
+          </div>
+          {debugLogs.map((log, i) => (
+            <div key={i} className="text-green-300 text-[10px] leading-tight">
+              {log}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Install Prompt */}
+      {showInstallPrompt && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowInstallPrompt(false);
+            localStorage.setItem('pwa_prompt_seen', 'true');
+          }}
+        >
+          <div 
+            className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold mb-4">📱 Cài đặt App</h3>
+            <p className="text-gray-300 mb-4 text-sm leading-relaxed">
+              Để sử dụng giọng đọc <strong>Linh Nâng cao</strong> từ cài đặt iPhone, hãy cài đặt app này:
+            </p>
+            <ol className="text-sm text-gray-400 space-y-2 mb-6 list-decimal list-inside">
+              <li>Nhấn nút <strong>Chia sẻ</strong> (Share) ở Safari</li>
+              <li>Chọn <strong>"Thêm vào Màn hình chính"</strong></li>
+              <li>Nhấn <strong>"Thêm"</strong></li>
+            </ol>
             <button
               onClick={() => {
-                if (!showSpeedMenu && isPlaying) handlePause();
-                setShowSpeedMenu(!showSpeedMenu);
+                setShowInstallPrompt(false);
+                localStorage.setItem('pwa_prompt_seen', 'true');
               }}
-              className={`p-3 rounded-xl transition-colors active:scale-95 font-bold w-14 text-center ${showSpeedMenu ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-medium"
             >
-              {Number(speed.toFixed(2))}x
+              Đã hiểu
             </button>
           </div>
         </div>
-      </footer>
-      
-      {/* Thẻ audio cố định trên DOM để bypass lỗi tự chạy (autoplay) trên iOS */}
-      <audio ref={googleAudioRef} className="hidden" playsInline crossOrigin="anonymous" />
-      <audio ref={prefetchAudioRef} className="hidden" playsInline crossOrigin="anonymous" />
+      )}
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 flex items-end"
+          onClick={() => setShowSettings(false)}
+        >
+          <div 
+            className="bg-gray-900 w-full rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+            style={{ paddingBottom: 'max(24px, calc(env(safe-area-inset-bottom) + 24px))' }}
+          >
+            <div className="w-12 h-1 bg-gray-700 rounded-full mx-auto mb-6"></div>
+            
+            <h2 className="text-xl font-bold mb-6">Cài đặt</h2>
+
+            {/* Voice Selection - Simplified */}
+            <div className="mb-6">
+              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
+              <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-xl">
+                    🎯
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-white">Mặc định hệ thống</div>
+                    <div className="text-xs text-gray-400">Sử dụng giọng từ Settings iPhone</div>
+                  </div>
+                  <div className="text-green-500 text-xl">✓</div>
+                </div>
+              </div>
+              
+              <div className="mt-3 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg text-xs text-blue-300">
+                💡 <strong>Mẹo:</strong> Để thay đổi giọng đọc, vào Settings iPhone → Accessibility → Spoken Content → Voices → Chọn <strong>Linh (Nâng cao)</strong>
+              </div>
+            </div>
+
+            {/* Speed Control */}
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-sm text-gray-400">Tốc độ</label>
+                <span className="text-lg text-blue-500 font-bold">{speed.toFixed(2)}x</span>
+              </div>
+              
+              {/* Buttons for precise control */}
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={() => setSpeed(Math.max(0.5, parseFloat((speed - 0.05).toFixed(2))))}
+                  className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
+                >
+                  −
+                </button>
+                
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.05"
+                  value={speed}
+                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                  className="flex-1 h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  style={{
+                    WebkitAppearance: 'none',
+                  }}
+                />
+                
+                <button
+                  onClick={() => setSpeed(Math.min(2.0, parseFloat((speed + 0.05).toFixed(2))))}
+                  className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              
+              {/* Quick preset buttons */}
+              <div className="grid grid-cols-4 gap-2">
+                {[0.8, 1.0, 1.2, 1.5].map((presetSpeed) => (
+                  <button
+                    key={presetSpeed}
+                    onClick={() => setSpeed(presetSpeed)}
+                    className={`py-2 rounded-lg text-sm font-medium transition-colors ${
+                      Math.abs(speed - presetSpeed) < 0.05
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {presetSpeed}x
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-medium transition-colors"
+            >
+              Xong
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
