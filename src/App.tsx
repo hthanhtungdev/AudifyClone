@@ -74,14 +74,24 @@ function App() {
     localStorage.setItem('audify_speed', speed.toString());
   }, [speed]);
 
-  // Split content into paragraphs
+  // Split content into sentences
   useEffect(() => {
     if (content) {
-      const paras = content
-        .split(/\n\n+/) // Split by double newlines
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-      setParagraphs(paras);
+      // Split by sentence endings (. ! ? and newlines)
+      const sentences = content
+        .split(/([.!?]\s+|\n+)/)
+        .reduce((acc: string[], part, i, arr) => {
+          if (i % 2 === 0 && part.trim()) {
+            const sentence = part + (arr[i + 1] || '');
+            if (sentence.trim().length > 10) {
+              acc.push(sentence.trim());
+            }
+          }
+          return acc;
+        }, []);
+      
+      setParagraphs(sentences);
+      addLog(`Split into ${sentences.length} sentences`);
     }
   }, [content]);
 
@@ -159,58 +169,73 @@ function App() {
     // Stop current speech
     window.speechSynthesis.cancel();
 
-    // Create utterance
-    const text = paragraphs[index];
-    addLog(`Text: ${text.substring(0, 30)}...`);
-    console.log('Speaking text:', text.substring(0, 50) + '...');
-    
-    const utterance = new SpeechSynthesisUtterance(text);
+    // iOS FIX: Small delay after cancel
+    setTimeout(() => {
+      // Create utterance
+      const text = paragraphs[index];
+      addLog(`Text: ${text.substring(0, 30)}...`);
+      console.log('Speaking text:', text.substring(0, 50) + '...');
+      
+      const utterance = new SpeechSynthesisUtterance(text);
 
-    // Set voice
-    const voice = voices.find(v => v.name === selectedVoice);
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
-    } else {
-      utterance.lang = 'vi-VN';
-    }
-
-    utterance.rate = speed;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    utterance.onstart = () => {
-      addLog(`Speech started: ${index}`);
-      console.log('Speech started for index:', index);
-      setIsPlaying(true);
-      setCurrentParagraph(index);
-    };
-
-    utterance.onend = () => {
-      addLog(`Speech ended: ${index}`);
-      console.log('Speech ended for index:', index);
-      // Auto play next paragraph
-      if (index + 1 < paragraphs.length) {
-        speakParagraph(index + 1);
+      // Set voice
+      const voice = voices.find(v => v.name === selectedVoice);
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+        addLog(`Voice: ${voice.name}`);
       } else {
-        setIsPlaying(false);
-        setCurrentParagraph(-1);
+        utterance.lang = 'vi-VN';
+        addLog('Voice: default vi-VN');
       }
-    };
 
-    utterance.onerror = (e) => {
-      addLog(`ERROR: ${e.error}`);
-      console.error('Speech error:', e.error, 'for index:', index);
-      setIsPlaying(false);
-    };
+      utterance.rate = speed;
+      utterance.pitch = 1;
+      utterance.volume = 1;
 
-    utteranceRef.current = utterance;
+      utterance.onstart = () => {
+        addLog(`✓ Speech started: ${index}`);
+        console.log('Speech started for index:', index);
+        setIsPlaying(true);
+        setCurrentParagraph(index);
+      };
 
-    // Speak immediately - NO setTimeout!
-    window.speechSynthesis.speak(utterance);
+      utterance.onend = () => {
+        addLog(`✓ Speech ended: ${index}`);
+        console.log('Speech ended for index:', index);
+        // Auto play next sentence
+        if (index + 1 < paragraphs.length) {
+          speakParagraph(index + 1);
+        } else {
+          setIsPlaying(false);
+          setCurrentParagraph(-1);
+        }
+      };
 
-    // Scroll to paragraph
-    scrollToParagraph(index);
+      utterance.onerror = (e) => {
+        addLog(`✗ ERROR: ${e.error} at ${index}`);
+        console.error('Speech error:', e.error, 'for index:', index);
+        
+        // iOS workaround: If canceled, try once more
+        if (e.error === 'canceled' && index === currentParagraph) {
+          addLog('Retrying after cancel...');
+          setTimeout(() => {
+            window.speechSynthesis.speak(utterance);
+          }, 100);
+        } else {
+          setIsPlaying(false);
+        }
+      };
+
+      utteranceRef.current = utterance;
+
+      // Speak
+      window.speechSynthesis.speak(utterance);
+      addLog('speak() called');
+
+      // Scroll to paragraph
+      scrollToParagraph(index);
+    }, 100);
   };
 
   // Scroll to paragraph
@@ -284,23 +309,23 @@ function App() {
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {paragraphs.length > 0 ? (
-          <div className="max-w-2xl mx-auto space-y-3">
+          <div className="max-w-2xl mx-auto space-y-2">
             {paragraphs.map((para, index) => (
               <div
                 key={index}
                 data-index={index}
                 onClick={() => handleParagraphClick(index)}
-                className={`p-4 rounded-lg cursor-pointer transition-all select-none ${
+                className={`p-3 rounded-lg cursor-pointer transition-all select-none ${
                   currentParagraph === index
-                    ? 'bg-blue-600 text-white shadow-lg scale-[1.02]'
-                    : 'bg-gray-900 hover:bg-gray-800 active:bg-gray-700'
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'bg-gray-900/50 hover:bg-gray-800 active:bg-gray-700'
                 }`}
                 style={{
                   WebkitTapHighlightColor: 'transparent',
                   WebkitUserSelect: 'none'
                 }}
               >
-                <p className="text-[15px] leading-relaxed">{para}</p>
+                <p className="text-[14px] leading-relaxed">{para}</p>
               </div>
             ))}
           </div>
