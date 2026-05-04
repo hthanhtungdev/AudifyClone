@@ -326,162 +326,59 @@ function App() {
   };
 
   return (
-    <div className="w-full h-screen bg-black text-gray-200 flex flex-col font-sans">
-      {/* Header */}
-      <header className={`bg-gray-900 border-b border-gray-800 flex items-center justify-between transition-all duration-300 overflow-hidden ${showHeader ? 'h-16 p-4 opacity-100' : 'h-0 p-0 opacity-0 border-0'}`}>
-        <h1 className="text-xl font-bold flex items-center gap-2 whitespace-nowrap">
-          <span className="bg-blue-600 p-1.5 rounded-lg text-white">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-              <rect x="3" y="8" width="4" height="8" rx="2" />
-              <rect x="10" y="4" width="4" height="16" rx="2" />
-              <rect x="17" y="10" width="4" height="4" rx="2" />
-            </svg>
-          </span>
-          Audify
-        </h1>
-        <button
-          onClick={() => setShowSettings(!showSettings)}
-          className={`p-2 rounded-full transition-colors ${showSettings ? 'bg-blue-600 text-white' : 'hover:bg-gray-800 text-gray-400'}`}
-        >
-          <Settings className="w-6 h-6" />
+    <div className="w-full h-screen bg-black text-white flex flex-col font-sans">
+      {/* Top Bar - Giống Safari Mobile */}
+      <div className="bg-[#1c1c1e] border-b border-gray-800 px-4 py-3 flex items-center gap-3">
+        <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
         </button>
-      </header>
-
-      {/* Settings Panel */}
-      {showSettings && (
-        <div className="p-3 bg-gray-900 border-b border-gray-800 animate-in slide-in-from-top duration-200">
-          <div className="max-w-2xl mx-auto flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Chọn giọng đọc</label>
-            </div>
-            <select
-              value={selectedVoiceName}
-              onChange={(e) => setSelectedVoiceName(e.target.value)}
-              className="w-full bg-black border border-gray-700 rounded-xl p-3 text-gray-200 focus:border-blue-500 outline-none text-sm"
-            >
-              <option value="">-- Mặc định thiết bị --</option>
-              
-              {[...voices]
-                .map((v, originalIdx) => {
-                  const vVal = (v.name + v.voiceURI).toLowerCase();
-                  const isPremium = /\b(premium|enhanced|hq|high|natural|pro)\b/i.test(vVal);
-                  const isCompact = vVal.includes('compact');
-                  
-                  let displayName = v.name
-                    .replace('Microsoft ', '')
-                    .replace(/\(Enhanced\)/i, '')
-                    .replace(/\(Premium\)/i, '')
-                    .replace(/\(Compact\)/i, '')
-                    .replace(' (Natural)', '')
-                    .trim();
-
-                  if (isPremium) {
-                    displayName += ' (Nâng cao ✨)';
-                  } else if (isCompact) {
-                    displayName += ' (Tiêu chuẩn)';
-                  }
-
-                  return { v, displayName, isPremium, isCompact, value: `${v.voiceURI}|${originalIdx}` };
-                })
-                .sort((a, b) => {
-                  const rank = (item: any) => {
-                    if (item.isPremium) return 2;
-                    if (item.isCompact) return -1;
-                    return 0;
-                  };
-                  const rA = rank(a);
-                  const rB = rank(b);
-                  if (rA !== rB) return rB - rA;
-                  return a.displayName.localeCompare(b.displayName);
-                })
-                .map((item, _, arr) => {
-                  let finalLabel = item.displayName;
-                  
-                  const sameNameIndices = arr.filter(ai => ai.displayName === item.displayName);
-                  if (sameNameIndices.length > 1) {
-                    const orderInSameName = sameNameIndices.findIndex(ai => ai.value === item.value) + 1;
-                    finalLabel += ` #${orderInSameName}`;
-                    
-                    const uriHint = item.v.voiceURI.split('.').pop() || '';
-                    if (uriHint) {
-                      finalLabel += ` [..${uriHint.slice(-8)}]`;
-                    }
-                  }
-
-                  return (
-                    <option key={item.value} value={item.value}>
-                      {finalLabel}
-                    </option>
-                  );
-                })
-              }
-            </select>
-
-            {/* Speed Control */}
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Tốc độ đọc</label>
-              <span className="text-sm text-gray-300">{speed.toFixed(1)}x</span>
-            </div>
-            <input
-              type="range"
-              min="0.5"
-              max="2.0"
-              step="0.1"
-              value={speed}
-              onChange={(e) => updateSpeed(parseFloat(e.target.value))}
-              className="w-full"
-            />
-          </div>
+        
+        <div className="flex-1 bg-[#2c2c2e] rounded-lg px-3 py-2 flex items-center gap-2">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://docs.google.com/docume..."
+            className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none"
+            onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
+          />
         </div>
-      )}
+        
+        <button 
+          onClick={fetchContent}
+          disabled={loading}
+          className="p-2 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {loading ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
+              <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path d="M9 10l6 2-6 2V10z"/>
+            </svg>
+          )}
+        </button>
+      </div>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar relative"
+        className="flex-1 overflow-y-auto px-4 py-6"
         onScroll={handleScroll}
         onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
       >
-        <div className={`w-full max-w-2xl transition-all duration-300 ${showHeader ? 'translate-y-0 opacity-100 scale-100 mb-4' : '-translate-y-4 opacity-0 scale-95 pointer-events-none h-0 mb-0'}`}>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-2xl">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Link2 className="h-5 w-5 text-gray-500" />
-                </div>
-                <input
-                  type="url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Dán URL Google Docs/Truyện..."
-                  className="w-full pl-10 pr-10 py-3 bg-black border border-gray-800 rounded-xl text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors text-sm"
-                  onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
-                />
-                {url && (
-                  <button
-                    onClick={() => setUrl('')}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-300 transition-colors"
-                    title="Xóa URL"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={fetchContent}
-                disabled={loading}
-                className="px-5 py-3 bg-blue-600 disabled:bg-blue-800 disabled:text-gray-400 hover:bg-blue-500 rounded-xl font-semibold transition-colors whitespace-nowrap flex items-center gap-2 text-sm"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Tải chữ"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="w-full max-w-3xl mb-32 lg:mb-10 px-2 lg:px-4">
-          {content ? (
-            <div className="text-base leading-[1.6] text-gray-300 font-sans pb-10" style={{ textRendering: 'optimizeLegibility' }}>
+        {content ? (
+          <div className="max-w-2xl mx-auto">
+            {/* Title */}
+            <h1 className="text-2xl font-bold mb-6 text-center border-b border-gray-800 pb-4">
+              {content.split('\n')[0].slice(0, 100)}
+            </h1>
+            
+            {/* Content */}
+            <div className="text-base leading-relaxed text-gray-200" style={{ textRendering: 'optimizeLegibility' }}>
               {(() => {
                 let currentGlobalIndex = 0;
                 return content.split(/([\r\n]+)/).map((segment, segIndex) => {
@@ -497,9 +394,8 @@ function App() {
                   return (
                     <p 
                       key={segIndex} 
-                      className={`mb-6 text-left whitespace-pre-wrap break-words px-4 py-1 transition-all duration-300 rounded-xl will-change-transform ${isParagraphActive ? "border-l-4 border-emerald-500/50 pl-4" : "border-l-4 border-transparent pl-4"}`}
+                      className="mb-5 text-justify"
                     >
-                      <span className={`${isParagraphActive ? "bg-emerald-600/20 ring-4 ring-emerald-600/20 rounded-sm" : ""}`} style={{ boxDecorationBreak: 'clone', WebkitBoxDecorationBreak: 'clone' }}>
                       {segment.split(/(\s+)/).map((part, i) => {
                         const wordStartIdx = currentGlobalIndex;
                         const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
@@ -513,73 +409,200 @@ function App() {
                               playFromStart(wordStartIdx);
                             }}
                             data-index={wordStartIdx}
-                            className={`cursor-pointer transition-all duration-200 hover:bg-white/10 rounded select-none ${!isWhitespace ? "px-1" : "px-0"} ${isHighlighted ? "bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)] font-bold scale-105" : ""}`}
+                            className={`cursor-pointer transition-all duration-150 ${isHighlighted ? "bg-blue-600 text-white px-1 rounded" : ""}`}
                             data-highlight={isHighlighted ? "true" : "false"}
                           >
                             {part}
                           </span>
                         );
                       })}
-                      </span>
                     </p>
                   );
                 });
               })()}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-600">
-              <Link2 className="w-12 h-12 mb-4 opacity-20" />
-              <p className="text-center font-medium">Chưa có nội dung. Hãy dán URL và ấn "Tải chữ"!</p>
-            </div>
-          )}
-        </div>
-
-        {/* Resume Auto-scroll Button */}
-        {!isAutoScrollEnabled && isPlaying && (
-          <button 
-            onClick={() => setIsAutoScrollEnabled(true)}
-            className="fixed bottom-32 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg animate-in fade-in slide-in-from-bottom duration-300 flex items-center gap-2 text-sm font-bold z-10"
-          >
-            Tiếp tục cuộn tự động
-          </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
+            <Link2 className="w-16 h-16 mb-4 opacity-30" />
+            <p className="text-center">Dán URL và nhấn nút tải để bắt đầu</p>
+          </div>
         )}
-
-        {/* Scroll To Top Button */}
-        {showScrollTop && (
-          <button 
-            onClick={scrollToTop}
-            className={`fixed ${!isAutoScrollEnabled && isPlaying ? 'bottom-44' : 'bottom-32'} right-6 bg-gray-800 text-white p-4 rounded-full shadow-2xl hover:bg-gray-700 transition-all active:scale-90 z-20 border border-gray-700`}
-            title="Cuộn lên đầu"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-              <path d="M18 15l-6-6-6 6"/>
-            </svg>
-          </button>
-        )}
+        
+        <div className="h-24"></div>
       </main>
 
-      {/* Control Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-4 shadow-2xl">
-        <div className="max-w-2xl mx-auto flex items-center justify-center gap-4">
+      {/* Resume Auto-scroll Button */}
+      {!isAutoScrollEnabled && isPlaying && (
+        <button 
+          onClick={() => setIsAutoScrollEnabled(true)}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10"
+        >
+          Tiếp tục cuộn tự động
+        </button>
+      )}
+
+      {/* Bottom Control Bar - Giống ảnh */}
+      <div className="bg-[#1c1c1e] border-t border-gray-800 px-6 py-4">
+        <div className="flex items-center justify-between max-w-md mx-auto">
+          {/* Previous Button */}
           <button
-            onClick={handleStop}
+            onClick={() => {
+              const prevIndex = Math.max(0, highlightCharIndex - 100);
+              playFromStart(prevIndex);
+            }}
             disabled={!content}
-            className="p-3 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 disabled:opacity-50 rounded-full transition-colors"
-            title="Dừng"
+            className="p-3 disabled:opacity-30 transition-opacity"
           >
-            <Square className="w-6 h-6" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
           </button>
-          
+
+          {/* Next Button */}
+          <button
+            onClick={() => {
+              const nextIndex = Math.min(content.length - 1, highlightCharIndex + 100);
+              playFromStart(nextIndex);
+            }}
+            disabled={!content}
+            className="p-3 disabled:opacity-30 transition-opacity"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+
+          {/* Play/Pause Button */}
           <button
             onClick={handlePlayPause}
             disabled={!content}
-            className="p-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-50 rounded-full transition-colors shadow-lg"
-            title={isPlaying ? "Tạm dừng" : "Phát"}
+            className="p-4 disabled:opacity-30 transition-opacity"
           >
-            {isPlaying ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8" />}
+            {isPlaying ? (
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-blue-500">
+                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-blue-500">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </button>
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`p-3 transition-colors ${showSettings ? 'text-blue-500' : ''}`}
+          >
+            <Settings className="w-7 h-7" />
+          </button>
+
+          {/* Folder/More Button */}
+          <button className="p-3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
           </button>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div 
+          className="fixed inset-0 bg-black/80 z-50 flex items-end"
+          onClick={() => setShowSettings(false)}
+        >
+          <div 
+            className="bg-[#1c1c1e] w-full rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
+            
+            <h2 className="text-xl font-bold mb-6">Cài đặt</h2>
+            
+            {/* Voice Selection */}
+            <div className="mb-6">
+              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
+              <select
+                value={selectedVoiceName}
+                onChange={(e) => setSelectedVoiceName(e.target.value)}
+                className="w-full bg-[#2c2c2e] border border-gray-700 rounded-xl p-3 text-white outline-none"
+              >
+                <option value="">Mặc định thiết bị</option>
+                
+                {[...voices]
+                  .map((v, originalIdx) => {
+                    const vVal = (v.name + v.voiceURI).toLowerCase();
+                    const isPremium = /\b(premium|enhanced|hq|high|natural|pro)\b/i.test(vVal);
+                    const isCompact = vVal.includes('compact');
+                    
+                    let displayName = v.name
+                      .replace('Microsoft ', '')
+                      .replace(/\(Enhanced\)/i, '')
+                      .replace(/\(Premium\)/i, '')
+                      .replace(/\(Compact\)/i, '')
+                      .replace(' (Natural)', '')
+                      .trim();
+
+                    if (isPremium) {
+                      displayName += ' ✨';
+                    }
+
+                    return { v, displayName, isPremium, isCompact, value: `${v.voiceURI}|${originalIdx}` };
+                  })
+                  .sort((a, b) => {
+                    const rank = (item: any) => {
+                      if (item.isPremium) return 2;
+                      if (item.isCompact) return -1;
+                      return 0;
+                    };
+                    const rA = rank(a);
+                    const rB = rank(b);
+                    if (rA !== rB) return rB - rA;
+                    return a.displayName.localeCompare(b.displayName);
+                  })
+                  .map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.displayName}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+
+            {/* Speed Control */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-gray-400">Tốc độ đọc</label>
+                <span className="text-sm text-blue-500 font-medium">{speed.toFixed(1)}x</span>
+              </div>
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                value={speed}
+                onChange={(e) => updateSpeed(parseFloat(e.target.value))}
+                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>0.5x</span>
+                <span>1.0x</span>
+                <span>2.0x</span>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowSettings(false)}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-medium transition-colors"
+            >
+              Xong
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
