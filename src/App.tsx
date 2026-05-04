@@ -157,6 +157,8 @@ function App() {
     }
 
     debugLog(`▶️ Starting speech from char: ${fromCharIndex}`);
+    debugLog(`📢 Available voices: ${voices.length}`);
+    debugLog(`🎤 Selected voice: ${selectedVoiceName || 'default'}`);
 
     stopSpeaking();
 
@@ -214,18 +216,19 @@ function App() {
       };
 
       utterance.onstart = () => {
-        console.log('Speech started successfully');
+        debugLog('✅ Speech STARTED successfully');
         setIsPlaying(true);
         setCurrentCharIndex(startIndex);
       };
 
       utterance.onend = () => {
-        console.log('Speech ended');
+        debugLog('⏹️ Speech ENDED');
         setIsPlaying(false);
         setCurrentCharIndex(-1);
       };
 
       utterance.onerror = (event) => {
+        debugLog(`❌ Speech ERROR: ${event.error}`);
         console.error('Speech error:', event.error, event);
         setIsPlaying(false);
         setCurrentCharIndex(-1);
