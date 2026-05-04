@@ -52,6 +52,44 @@ function App() {
     }
   }, []);
 
+  // Listen for messages from iframe (text clicked in web view)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SPEAK_TEXT') {
+        const text = event.data.text;
+        addLog(`Received text from iframe: ${text.substring(0, 50)}...`);
+        
+        // Speak the text directly
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'vi-VN';
+        utterance.rate = speed;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        utterance.onstart = () => {
+          setIsPlaying(true);
+          addLog('✓ Speaking iframe text');
+        };
+        
+        utterance.onend = () => {
+          setIsPlaying(false);
+        };
+        
+        utterance.onerror = (e) => {
+          addLog(`✗ Speech error: ${e.error}`);
+          setIsPlaying(false);
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [speed]);
+
   // Load voices - simplified
   useEffect(() => {
     const loadVoices = () => {
@@ -318,15 +356,6 @@ function App() {
     speakParagraph(nextIndex);
   };
 
-  // Handle paragraph click
-  const handleParagraphClick = (index: number) => {
-    addLog(`Clicked paragraph ${index}`);
-    console.log('Clicked paragraph index:', index);
-    console.log('Total paragraphs:', paragraphs.length);
-    console.log('Paragraph text:', paragraphs[index]?.substring(0, 50));
-    speakParagraph(index);
-  };
-
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
       {/* Top Bar */}
@@ -351,36 +380,34 @@ function App() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content - Always show web view */}
       <div 
         ref={contentRef}
-        className="flex-1 overflow-y-auto p-4 pb-32"
+        className="flex-1 overflow-hidden relative"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {paragraphs.length > 0 ? (
-          <div className="max-w-2xl mx-auto space-y-2">
-            {paragraphs.map((para, index) => (
-              <div
-                key={index}
-                data-index={index}
-                onClick={() => handleParagraphClick(index)}
-                className={`p-3 rounded-lg cursor-pointer transition-all select-none ${
-                  currentParagraph === index
-                    ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-gray-900/50 hover:bg-gray-800 active:bg-gray-700'
-                }`}
-                style={{
-                  WebkitTapHighlightColor: 'transparent',
-                  WebkitUserSelect: 'none'
-                }}
-              >
-                <p className="text-[14px] leading-relaxed">{para}</p>
+        {url ? (
+          <div className="h-full w-full bg-white">
+            <iframe
+              src={`/api/proxy?url=${encodeURIComponent(url)}`}
+              className="w-full h-full border-0"
+              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+              title="Web Browser"
+            />
+            
+            {/* Hint overlay */}
+            {!isPlaying && (
+              <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white px-4 py-2 rounded-full text-sm shadow-lg backdrop-blur z-10 pointer-events-none">
+                💡 Click vào văn bản để nghe
               </div>
-            ))}
+            )}
           </div>
         ) : (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Nhập URL và nhấn Tải để bắt đầu</p>
+          <div className="flex items-center justify-center h-full text-gray-500 p-4">
+            <div className="text-center">
+              <p className="text-lg mb-2">Nhập URL và nhấn Tải</p>
+              <p className="text-sm text-gray-600">Sau đó click vào văn bản trong trang web để nghe</p>
+            </div>
           </div>
         )}
       </div>
