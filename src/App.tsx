@@ -18,7 +18,6 @@ function App() {
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastScrollTime = useRef(0);
   const isScrollingToRef = useRef(false);
-  const isInitialized = useRef(false);
 
   // Sync state with localStorage
   useEffect(() => {
