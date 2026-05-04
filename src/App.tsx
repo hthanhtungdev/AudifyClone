@@ -13,6 +13,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentCharIndex, setCurrentCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [touchStartInfo, setTouchStartInfo] = useState<{time: number, y: number} | null>(null);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -389,7 +390,6 @@ function App() {
         ref={mainContentRef}
         className="flex-1 overflow-y-auto px-4 py-4 pb-24 -webkit-overflow-scrolling-touch"
         onScroll={handleScroll}
-        onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
       >
         {content ? (
           <div className="max-w-2xl mx-auto">
@@ -411,34 +411,61 @@ function App() {
                   <p 
                     key={pIndex}
                     onTouchStart={(e) => {
-                      // Prevent default to avoid iOS quirks
-                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                      setTouchStartInfo({
+                        time: Date.now(),
+                        y: e.touches[0].clientY
+                      });
+                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+                    }}
+                    onTouchMove={(e) => {
+                      if (touchStartInfo) {
+                        const deltaY = Math.abs(e.touches[0].clientY - touchStartInfo.y);
+                        if (deltaY > 10) {
+                          e.currentTarget.style.backgroundColor = '';
+                        }
+                      }
                     }}
                     onTouchEnd={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
                       e.currentTarget.style.backgroundColor = '';
-                      console.log('Touch end on paragraph:', pIndex);
-                      handleTextClick(paragraphStart);
+                      
+                      if (touchStartInfo) {
+                        const deltaTime = Date.now() - touchStartInfo.time;
+                        const deltaY = Math.abs(e.changedTouches[0].clientY - touchStartInfo.y);
+                        
+                        // Only trigger if it's a quick tap (< 300ms) and minimal movement (< 10px)
+                        if (deltaTime < 300 && deltaY < 10) {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('✅ Valid tap on paragraph:', pIndex, 'at char:', paragraphStart);
+                          handleTextClick(paragraphStart);
+                        } else {
+                          console.log('❌ Scroll detected - deltaTime:', deltaTime, 'deltaY:', deltaY);
+                        }
+                      }
+                      
+                      setTouchStartInfo(null);
                     }}
                     onTouchCancel={(e) => {
                       e.currentTarget.style.backgroundColor = '';
+                      setTouchStartInfo(null);
                     }}
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Click on paragraph:', pIndex);
+                      console.log('🖱️ Click on paragraph:', pIndex);
                       handleTextClick(paragraphStart);
                     }}
                     data-active={isActive ? "true" : "false"}
-                    className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-all duration-200 ${
+                    className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-colors duration-150 ${
                       isActive 
                         ? 'bg-blue-600/30 border-l-4 border-blue-400 text-white shadow-lg' 
                         : 'bg-gray-900/30'
                     }`}
                     style={{ 
                       WebkitTapHighlightColor: 'transparent',
-                      touchAction: 'manipulation'
+                      touchAction: 'manipulation',
+                      userSelect: 'none',
+                      WebkitUserSelect: 'none'
                     }}
                   >
                     {paragraph}
