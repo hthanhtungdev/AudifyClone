@@ -49,3 +49,30 @@ body {
 .safe-area-inset-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
+
+/* Hover effect for clickable text in web content */
+.web-content p:hover,
+.web-content h1:hover,
+.web-content h2:hover,
+.web-content h3:hover,
+.web-content h4:hover,
+.web-content h5:hover,
+.web-content h6:hover,
+.web-content li:hover,
+.web-content div:hover {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  transition: background-color 0.2s ease !important;
+  cursor: pointer !important;
+}
+
+.web-content p:active,
+.web-content h1:active,
+.web-content h2:active,
+.web-content h3:active,
+.web-content h4:active,
+.web-content h5:active,
+.web-content h6:active,
+.web-content li:active,
+.web-content div:active {
+  background-color: rgba(59, 130, 246, 0.3) !important;
+}
