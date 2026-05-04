@@ -50,7 +50,7 @@ body {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
-/* Hover effect for clickable text in web content */
+/* Subtle hover effect for clickable text - preserves original styling */
 .web-content p:hover,
 .web-content h1:hover,
 .web-content h2:hover,
@@ -58,11 +58,11 @@ body {
 .web-content h4:hover,
 .web-content h5:hover,
 .web-content h6:hover,
-.web-content li:hover,
-.web-content div:hover {
-  background-color: rgba(59, 130, 246, 0.15) !important;
-  transition: background-color 0.2s ease !important;
+.web-content li:hover {
+  outline: 2px solid rgba(59, 130, 246, 0.3);
+  outline-offset: 2px;
   cursor: pointer !important;
+  transition: outline 0.15s ease;
 }
 
 .web-content p:active,
@@ -72,7 +72,7 @@ body {
 .web-content h4:active,
 .web-content h5:active,
 .web-content h6:active,
-.web-content li:active,
-.web-content div:active {
-  background-color: rgba(59, 130, 246, 0.3) !important;
+.web-content li:active {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
 }
