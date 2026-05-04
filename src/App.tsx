@@ -108,18 +108,35 @@ function App() {
     if (!url) return;
     
     setLoading(true);
+    setContent('');
+    addLog(`Fetching: ${url}`);
+    
     try {
       const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
       const response = await fetch(proxyUrl);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const htmlText = await response.text();
+      addLog(`Received ${htmlText.length} characters`);
+
+      if (!htmlText || htmlText.length < 100) {
+        throw new Error('Nội dung quá ngắn hoặc trống');
+      }
 
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
+      
+      // Try Readability first
       const reader = new Readability(doc);
       const article = reader.parse();
 
       let text = '';
-      if (article && article.content) {
+      
+      if (article && article.content && article.content.length > 100) {
+        addLog('Using Readability parser');
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = article.content;
         
@@ -144,13 +161,24 @@ function App() {
         
         text = paragraphs.join('\n\n');
       } else {
+        // Fallback: get all text from body
+        addLog('Using fallback: body text');
         text = doc.body.textContent || '';
+      }
+
+      if (!text || text.trim().length < 50) {
+        throw new Error('Không tìm thấy nội dung văn bản. URL có thể không hợp lệ hoặc bị chặn.');
       }
 
       setContent(text.trim());
       setCurrentParagraph(-1);
+      addLog(`✓ Loaded ${text.length} characters`);
+      
     } catch (err) {
-      alert('Lỗi tải nội dung: ' + (err as Error).message);
+      const errorMsg = (err as Error).message;
+      addLog(`✗ Error: ${errorMsg}`);
+      alert('❌ Lỗi tải nội dung:\n\n' + errorMsg + '\n\nGợi ý:\n- Kiểm tra URL có đúng không\n- Thử URL khác\n- Một số trang web có thể bị chặn');
+      setContent('');
     } finally {
       setLoading(false);
     }
