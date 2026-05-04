@@ -17,6 +17,7 @@ function App() {
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const webContentRef = useRef<HTMLDivElement>(null);
   const pendingTimeoutRef = useRef<number | null>(null);
   const isProcessingRef = useRef(false);
   const currentSentenceRef = useRef<HTMLElement | null>(null); // Track current sentence element
@@ -125,12 +126,13 @@ function App() {
     localStorage.setItem('audify_speed', speed.toString());
   }, [speed]);
 
-  // Split content into sentences (for backward compatibility, not used anymore)
+  // Set HTML content once when rawHTML changes
   useEffect(() => {
-    if (content) {
-      addLog(`Content loaded: ${content.length} characters`);
+    if (webContentRef.current && rawHTML) {
+      webContentRef.current.innerHTML = rawHTML;
+      addLog('HTML content set');
     }
-  }, [content]);
+  }, [rawHTML]);
 
   // Fetch content
   const fetchContent = async () => {
@@ -229,6 +231,7 @@ function App() {
     // Remove highlight from previous element (if different)
     if (currentSentenceRef.current && currentSentenceRef.current !== element) {
       currentSentenceRef.current.classList.remove('speaking');
+      addLog('Removed old highlight');
     }
     
     // Store current element
@@ -239,6 +242,7 @@ function App() {
     
     // Highlight immediately (before speech starts)
     element.classList.add('speaking');
+    addLog(`Added 'speaking' class to ${element.tagName}`);
     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     
     // Small delay to ensure cancel completes
@@ -258,6 +262,7 @@ function App() {
       utterance.onend = () => {
         // Remove highlight
         element.classList.remove('speaking');
+        addLog('Removed highlight after speech');
         
         // Only auto-play if enabled
         if (!shouldAutoPlayRef.current) {
@@ -522,13 +527,13 @@ function App() {
       {/* Content - Render HTML directly with click-to-speak */}
       <div 
         ref={contentRef}
-        className="flex-1 overflow-y-auto relative bg-white"
+        className="flex-1 overflow-y-auto relative bg-black"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {rawHTML ? (
           <div
+            ref={webContentRef}
             className="w-full h-full web-content"
-            dangerouslySetInnerHTML={{ __html: rawHTML }}
             onClick={(e) => {
               const target = e.target as HTMLElement;
               
