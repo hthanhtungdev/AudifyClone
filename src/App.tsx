@@ -418,26 +418,57 @@ function App() {
             
             {/* Content with word-by-word rendering */}
             <div className="text-base leading-relaxed text-gray-200" style={{ textRendering: 'optimizeLegibility' }}>
-              {wordsRef.current.map((word, index) => {
-                const isActive = index === currentWordIndex;
-                const isNewLine = word.start > 0 && content[word.start - 1] === '\n';
+              {(() => {
+                // Group words into lines/paragraphs
+                const lines: Array<Array<{ word: typeof wordsRef.current[0]; index: number }>> = [];
+                let currentLine: Array<{ word: typeof wordsRef.current[0]; index: number }> = [];
                 
-                return (
-                  <span key={index}>
-                    {isNewLine && <br />}
-                    <span
-                      onClick={() => handleWordClick(index)}
-                      data-word-index={index}
-                      data-word-active={isActive ? "true" : "false"}
-                      className={`cursor-pointer transition-all duration-150 hover:bg-gray-700 px-0.5 rounded ${
-                        isActive ? "bg-blue-600 text-white font-medium" : ""
+                wordsRef.current.forEach((word, index) => {
+                  const isNewLine = word.start > 0 && (content[word.start - 1] === '\n' || content[word.start - 2] === '\n');
+                  
+                  if (isNewLine && currentLine.length > 0) {
+                    lines.push(currentLine);
+                    currentLine = [];
+                  }
+                  
+                  currentLine.push({ word, index });
+                });
+                
+                if (currentLine.length > 0) {
+                  lines.push(currentLine);
+                }
+
+                return lines.map((line, lineIndex) => {
+                  const hasActiveWord = line.some(item => item.index === currentWordIndex);
+                  
+                  return (
+                    <p 
+                      key={lineIndex}
+                      className={`mb-4 px-3 py-2 rounded transition-colors duration-200 ${
+                        hasActiveWord ? 'bg-blue-600/20 border-l-4 border-blue-500' : ''
                       }`}
                     >
-                      {word.text}
-                    </span>
-                  </span>
-                );
-              })}
+                      {line.map((item) => {
+                        const isActive = item.index === currentWordIndex;
+                        
+                        return (
+                          <span
+                            key={item.index}
+                            onClick={() => handleWordClick(item.index)}
+                            data-word-index={item.index}
+                            data-word-active={isActive ? "true" : "false"}
+                            className={`cursor-pointer ${
+                              isActive ? "text-blue-400 font-medium" : ""
+                            }`}
+                          >
+                            {item.word.text}
+                          </span>
+                        );
+                      })}
+                    </p>
+                  );
+                });
+              })()}
             </div>
           </div>
         ) : (
