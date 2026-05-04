@@ -51,11 +51,28 @@ function App() {
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
-      const viVoices = allVoices.filter(v => v.lang.includes('vi'));
+      
+      // Get Vietnamese voices - more flexible filter
+      const viVoices = allVoices.filter(v => 
+        v.lang.toLowerCase().includes('vi') || 
+        v.name.toLowerCase().includes('linh') ||
+        v.name.toLowerCase().includes('vietnam')
+      );
+      
+      addLog(`Found ${viVoices.length} Vietnamese voices out of ${allVoices.length} total`);
       setVoices(viVoices);
       
       if (!selectedVoice && viVoices.length > 0) {
-        setSelectedVoice(viVoices[0].name);
+        // Prefer Enhanced/Premium voice
+        const enhanced = viVoices.find(v => 
+          v.name.toLowerCase().includes('enhanced') ||
+          v.name.toLowerCase().includes('nâng cao') ||
+          v.name.toLowerCase().includes('premium')
+        );
+        
+        const defaultVoice = enhanced || viVoices[0];
+        setSelectedVoice(defaultVoice.name);
+        addLog(`Selected default voice: ${defaultVoice.name}`);
       }
     };
 
