@@ -11,13 +11,11 @@ function App() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => localStorage.getItem('audify_voice') || '');
   const [showSettings, setShowSettings] = useState(false);
-  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
+  const [currentCharIndex, setCurrentCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const wordsRef = useRef<Array<{ text: string; start: number; end: number }>>([]);
-  const currentWordIndexRef = useRef(-1);
   const lastScrollTime = useRef(0);
   const isScrollingToRef = useRef(false);
 
@@ -38,7 +36,7 @@ function App() {
     localStorage.setItem('audify_voice', selectedVoiceName);
   }, [selectedVoiceName]);
 
-  // Initialize voices - CHỈ giọng thiết bị
+  // Initialize voices
   useEffect(() => {
     const updateVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
@@ -74,38 +72,6 @@ function App() {
       window.speechSynthesis.onvoiceschanged = null;
     };
   }, [selectedVoiceName]);
-
-  // Parse content into words with positions
-  useEffect(() => {
-    if (!content) {
-      wordsRef.current = [];
-      console.log('No content, clearing words');
-      return;
-    }
-
-    const words: Array<{ text: string; start: number; end: number }> = [];
-    let currentIndex = 0;
-
-    // Split by whitespace but keep track of positions
-    const tokens = content.match(/\S+|\s+/g) || [];
-    
-    console.log('Parsing content into words, total tokens:', tokens.length);
-    
-    tokens.forEach(token => {
-      const start = currentIndex;
-      const end = start + token.length;
-      
-      if (!/^\s+$/.test(token)) {
-        words.push({ text: token, start, end });
-      }
-      
-      currentIndex = end;
-    });
-
-    wordsRef.current = words;
-    console.log('Total words parsed:', words.length);
-    console.log('First 5 words:', words.slice(0, 5));
-  }, [content]);
 
   const fetchContent = async () => {
     if (!url) return;
@@ -173,19 +139,12 @@ function App() {
       utteranceRef.current = null;
     }
     setIsPlaying(false);
-    setCurrentWordIndex(-1);
-    currentWordIndexRef.current = -1;
+    setCurrentCharIndex(-1);
   };
 
-  const startSpeaking = (fromWordIndex: number = 0) => {
-    if (!content || wordsRef.current.length === 0) {
-      console.log('No content or words to speak');
-      return;
-    }
+  const startSpeaking = (fromCharIndex: number = 0) => {
+    if (!content) return;
 
-    console.log('Starting speech from word index:', fromWordIndex);
-
-    // Stop any current speech
     stopSpeaking();
 
     // Haptic feedback
@@ -193,88 +152,58 @@ function App() {
       window.navigator.vibrate(10);
     }
 
-    // Find the word to start from
-    const startIndex = Math.max(0, Math.min(fromWordIndex, wordsRef.current.length - 1));
-    const textToSpeak = wordsRef.current.slice(startIndex).map(w => w.text).join('');
-
-    console.log('Text to speak:', textToSpeak.slice(0, 100));
-
-    if (!textToSpeak.trim()) {
-      console.log('No text to speak after trim');
-      return;
+    // Find paragraph start
+    let startIndex = fromCharIndex;
+    if (fromCharIndex > 0) {
+      const lastNewline = content.lastIndexOf('\n', fromCharIndex - 1);
+      startIndex = lastNewline === -1 ? 0 : lastNewline + 1;
     }
+
+    const textToSpeak = content.slice(startIndex);
+    if (!textToSpeak.trim()) return;
 
     // Unlock audio on iOS
     const wakeUp = new SpeechSynthesisUtterance("");
     window.speechSynthesis.speak(wakeUp);
 
-    // Create utterance
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     const voice = getSelectedVoice();
 
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang;
-      console.log('Using voice:', voice.name);
     }
 
     utterance.rate = speed;
     utterance.pitch = 1;
     utterance.volume = 1;
 
-    // Track word boundaries
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
-        // Calculate which word we're on
-        const charIndexInSlice = event.charIndex;
-        let accumulatedChars = 0;
-        
-        for (let i = 0; i < wordsRef.current.length - startIndex; i++) {
-          const word = wordsRef.current[startIndex + i];
-          const wordLength = word.text.length;
-          
-          if (charIndexInSlice >= accumulatedChars && charIndexInSlice < accumulatedChars + wordLength) {
-            const globalWordIndex = startIndex + i;
-            setCurrentWordIndex(globalWordIndex);
-            currentWordIndexRef.current = globalWordIndex;
-            break;
-          }
-          
-          accumulatedChars += wordLength;
-        }
+        setCurrentCharIndex(startIndex + event.charIndex);
       }
     };
 
     utterance.onstart = () => {
-      console.log('Speech started');
       setIsPlaying(true);
-      setCurrentWordIndex(startIndex);
-      currentWordIndexRef.current = startIndex;
+      setCurrentCharIndex(startIndex);
     };
 
     utterance.onend = () => {
-      console.log('Speech ended');
       setIsPlaying(false);
-      setCurrentWordIndex(-1);
-      currentWordIndexRef.current = -1;
+      setCurrentCharIndex(-1);
     };
 
-    utterance.onerror = (event) => {
-      console.error('Speech error:', event);
+    utterance.onerror = () => {
       setIsPlaying(false);
-      setCurrentWordIndex(-1);
-      currentWordIndexRef.current = -1;
+      setCurrentCharIndex(-1);
     };
 
     utteranceRef.current = utterance;
 
-    // Speak with delay to ensure everything is ready
     setTimeout(() => {
-      console.log('Calling speechSynthesis.speak()');
-      window.speechSynthesis.cancel(); // Clear queue
+      window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utterance);
-      console.log('Speaking:', window.speechSynthesis.speaking);
-      console.log('Pending:', window.speechSynthesis.pending);
     }, 100);
   };
 
@@ -282,22 +211,21 @@ function App() {
     if (isPlaying) {
       stopSpeaking();
     } else {
-      const startIndex = currentWordIndexRef.current >= 0 ? currentWordIndexRef.current : 0;
+      const startIndex = currentCharIndex >= 0 ? currentCharIndex : 0;
       setIsAutoScrollEnabled(true);
       startSpeaking(startIndex);
     }
   };
 
-  const handleWordClick = (wordIndex: number) => {
-    console.log('Word clicked:', wordIndex, wordsRef.current[wordIndex]?.text);
+  const handleTextClick = (charIndex: number) => {
     setIsAutoScrollEnabled(true);
-    startSpeaking(wordIndex);
+    startSpeaking(charIndex);
   };
 
   const updateSpeed = (newSpeed: number) => {
     setSpeed(newSpeed);
     if (isPlaying) {
-      const currentIndex = currentWordIndexRef.current;
+      const currentIndex = currentCharIndex;
       stopSpeaking();
       setTimeout(() => {
         startSpeaking(currentIndex >= 0 ? currentIndex : 0);
@@ -305,7 +233,7 @@ function App() {
     }
   };
 
-  // Heartbeat để tránh iOS tự động dừng
+  // Heartbeat
   useEffect(() => {
     let interval: any;
     
@@ -322,18 +250,17 @@ function App() {
 
   // Auto-scroll
   useEffect(() => {
-    if (currentWordIndex >= 0 && isAutoScrollEnabled && mainContentRef.current) {
+    if (currentCharIndex >= 0 && isAutoScrollEnabled && mainContentRef.current) {
       const now = Date.now();
       if (now - lastScrollTime.current < 800) return;
 
-      const activeElement = document.querySelector('[data-word-active="true"]') as HTMLElement;
+      const activeElement = document.querySelector('[data-active="true"]') as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
         const containerRect = container.getBoundingClientRect();
         const elementRect = activeElement.getBoundingClientRect();
         const relativeTop = elementRect.top - containerRect.top;
 
-        // Chỉ cuộn khi từ gần ra khỏi viewport
         if (relativeTop > containerRect.height * 0.6 || relativeTop < 80) {
           const targetTop = container.scrollTop + relativeTop - (containerRect.height / 3);
           
@@ -345,7 +272,7 @@ function App() {
         }
       }
     }
-  }, [currentWordIndex, isAutoScrollEnabled]);
+  }, [currentCharIndex, isAutoScrollEnabled]);
 
   const handleScroll = () => {
     if (!isScrollingToRef.current && isPlaying && isAutoScrollEnabled) {
@@ -354,34 +281,34 @@ function App() {
   };
 
   const handlePrevious = () => {
-    const prevIndex = Math.max(0, currentWordIndexRef.current - 20);
+    const prevIndex = Math.max(0, currentCharIndex - 200);
     setIsAutoScrollEnabled(true);
     startSpeaking(prevIndex);
   };
 
   const handleNext = () => {
-    const nextIndex = Math.min(wordsRef.current.length - 1, currentWordIndexRef.current + 20);
+    const nextIndex = Math.min(content.length - 1, currentCharIndex + 200);
     setIsAutoScrollEnabled(true);
     startSpeaking(nextIndex);
   };
 
   return (
-    <div className="w-full h-screen bg-black text-white flex flex-col font-sans">
+    <div className="w-full h-screen bg-black text-white flex flex-col font-sans overflow-hidden">
       {/* Top Bar */}
-      <div className="bg-[#1c1c1e] border-b border-gray-800 px-4 py-3 flex items-center gap-3">
-        <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
+      <div className="bg-[#1c1c1e] border-b border-gray-800 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
+        <button className="p-2 active:bg-gray-800 rounded-lg transition-colors touch-manipulation">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
             <path d="M3 12h18M3 6h18M3 18h18"/>
           </svg>
         </button>
         
-        <div className="flex-1 bg-[#2c2c2e] rounded-lg px-3 py-2 flex items-center gap-2">
+        <div className="flex-1 bg-[#2c2c2e] rounded-lg px-3 py-2 flex items-center gap-2 min-w-0">
           <input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://docs.google.com/docume..."
-            className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none"
+            placeholder="https://docs.google.com/..."
+            className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-500 outline-none min-w-0"
             onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
           />
         </div>
@@ -389,7 +316,7 @@ function App() {
         <button 
           onClick={fetchContent}
           disabled={loading}
-          className="p-2 hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+          className="p-2 active:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 touch-manipulation flex-shrink-0"
         >
           {loading ? (
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -405,146 +332,109 @@ function App() {
       {/* Main Content */}
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto px-4 py-6 pb-32"
+        className="flex-1 overflow-y-auto px-4 py-4 pb-24 -webkit-overflow-scrolling-touch"
         onScroll={handleScroll}
-        onWheel={() => isPlaying && setIsAutoScrollEnabled(false)}
         onTouchMove={() => isPlaying && setIsAutoScrollEnabled(false)}
       >
         {content ? (
           <div className="max-w-2xl mx-auto">
             {/* Title */}
-            <h1 className="text-2xl font-bold mb-6 text-center border-b border-gray-800 pb-4">
-              {content.split('\n')[0].slice(0, 100)}
+            <h1 className="text-xl font-bold mb-4 pb-3 border-b border-gray-800">
+              {content.split('\n')[0].slice(0, 80)}
             </h1>
             
-            {/* Content with word-by-word rendering */}
-            <div className="text-base leading-relaxed text-gray-200" style={{ textRendering: 'optimizeLegibility' }}>
-              {(() => {
-                // Group words into lines/paragraphs
-                const lines: Array<Array<{ word: typeof wordsRef.current[0]; index: number }>> = [];
-                let currentLine: Array<{ word: typeof wordsRef.current[0]; index: number }> = [];
+            {/* Content */}
+            <div className="text-[15px] leading-[1.7] text-gray-200">
+              {content.split('\n').map((paragraph, pIndex) => {
+                if (!paragraph.trim()) return null;
                 
-                wordsRef.current.forEach((word, index) => {
-                  const isNewLine = word.start > 0 && (content[word.start - 1] === '\n' || content[word.start - 2] === '\n');
-                  
-                  if (isNewLine && currentLine.length > 0) {
-                    lines.push(currentLine);
-                    currentLine = [];
-                  }
-                  
-                  currentLine.push({ word, index });
-                });
+                const paragraphStart = content.split('\n').slice(0, pIndex).join('\n').length + pIndex;
+                const paragraphEnd = paragraphStart + paragraph.length;
+                const isActive = currentCharIndex >= paragraphStart && currentCharIndex < paragraphEnd;
                 
-                if (currentLine.length > 0) {
-                  lines.push(currentLine);
-                }
-
-                return lines.map((line, lineIndex) => {
-                  const hasActiveWord = line.some(item => item.index === currentWordIndex);
-                  
-                  return (
-                    <p 
-                      key={lineIndex}
-                      className={`mb-4 px-3 py-2 rounded transition-colors duration-200 ${
-                        hasActiveWord ? 'bg-blue-600/20 border-l-4 border-blue-500' : ''
-                      }`}
-                    >
-                      {line.map((item) => {
-                        const isActive = item.index === currentWordIndex;
-                        
-                        return (
-                          <span
-                            key={item.index}
-                            onClick={() => handleWordClick(item.index)}
-                            data-word-index={item.index}
-                            data-word-active={isActive ? "true" : "false"}
-                            className={`cursor-pointer ${
-                              isActive ? "text-blue-400 font-medium" : ""
-                            }`}
-                          >
-                            {item.word.text}
-                          </span>
-                        );
-                      })}
-                    </p>
-                  );
-                });
-              })()}
+                return (
+                  <p 
+                    key={pIndex}
+                    onClick={() => handleTextClick(paragraphStart)}
+                    data-active={isActive ? "true" : "false"}
+                    className={`mb-4 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 touch-manipulation ${
+                      isActive 
+                        ? 'bg-blue-600/20 border-l-4 border-blue-500 text-white' 
+                        : 'active:bg-gray-800/50'
+                    }`}
+                  >
+                    {paragraph}
+                  </p>
+                );
+              })}
             </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <Link2 className="w-16 h-16 mb-4 opacity-30" />
-            <p className="text-center">Dán URL và nhấn nút tải để bắt đầu</p>
+            <p className="text-center text-sm px-4">Dán URL và nhấn nút tải để bắt đầu</p>
           </div>
         )}
-        
-        <div className="h-32"></div>
       </main>
 
       {/* Resume Auto-scroll Button */}
       {!isAutoScrollEnabled && isPlaying && (
         <button 
           onClick={() => setIsAutoScrollEnabled(true)}
-          className="fixed bottom-28 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600 active:bg-blue-700 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10 touch-manipulation"
         >
           Tiếp tục cuộn tự động
         </button>
       )}
 
       {/* Bottom Control Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-6 py-4 safe-area-inset-bottom z-50">
+      <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-4 py-3 safe-area-inset-bottom z-50 flex-shrink-0">
         <div className="flex items-center justify-between max-w-md mx-auto">
-          {/* Previous Button */}
           <button
             onClick={handlePrevious}
             disabled={!content}
-            className="p-3 disabled:opacity-30 transition-opacity"
+            className="p-2.5 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
               <path d="M19 12H5M12 19l-7-7 7-7"/>
             </svg>
           </button>
 
-          {/* Next Button */}
           <button
             onClick={handleNext}
             disabled={!content}
-            className="p-3 disabled:opacity-30 transition-opacity"
+            className="p-2.5 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
           </button>
 
-          {/* Play/Pause Button */}
           <button
             onClick={handlePlayPause}
             disabled={!content}
-            className="p-4 disabled:opacity-30 transition-opacity"
+            className="p-3 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
           >
             {isPlaying ? (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-blue-500">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-blue-500">
                 <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-9 h-9 text-blue-500">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-blue-500">
                 <path d="M8 5v14l11-7z"/>
               </svg>
             )}
           </button>
 
-          {/* Settings Button */}
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-3 transition-colors ${showSettings ? 'text-blue-500' : ''}`}
+            className={`p-2.5 active:scale-95 transition-all touch-manipulation ${showSettings ? 'text-blue-500' : ''}`}
           >
-            <Settings className="w-7 h-7" />
+            <Settings className="w-6 h-6" />
           </button>
 
-          {/* Folder Button */}
-          <button className="p-3">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
+          <button className="p-2.5 active:scale-95 transition-all touch-manipulation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
               <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
             </svg>
           </button>
@@ -558,20 +448,19 @@ function App() {
           onClick={() => setShowSettings(false)}
         >
           <div 
-            className="bg-[#1c1c1e] w-full rounded-t-3xl p-6 animate-in slide-in-from-bottom duration-300"
+            className="bg-[#1c1c1e] w-full rounded-t-3xl p-6 pb-8 animate-in slide-in-from-bottom duration-300 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
             
             <h2 className="text-xl font-bold mb-6">Cài đặt</h2>
             
-            {/* Voice Selection */}
             <div className="mb-6">
               <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
               <select
                 value={selectedVoiceName}
                 onChange={(e) => setSelectedVoiceName(e.target.value)}
-                className="w-full bg-[#2c2c2e] border border-gray-700 rounded-xl p-3 text-white outline-none"
+                className="w-full bg-[#2c2c2e] border border-gray-700 rounded-xl p-3 text-white outline-none touch-manipulation"
               >
                 <option value="">Mặc định thiết bị</option>
                 
@@ -579,7 +468,6 @@ function App() {
                   .map((v, originalIdx) => {
                     const vVal = (v.name + v.voiceURI).toLowerCase();
                     const isPremium = /\b(premium|enhanced|hq|high|natural|pro)\b/i.test(vVal);
-                    const isCompact = vVal.includes('compact');
                     
                     let displayName = v.name
                       .replace('Microsoft ', '')
@@ -589,21 +477,12 @@ function App() {
                       .replace(' (Natural)', '')
                       .trim();
 
-                    if (isPremium) {
-                      displayName += ' ✨';
-                    }
+                    if (isPremium) displayName += ' ✨';
 
-                    return { v, displayName, isPremium, isCompact, value: `${v.voiceURI}|${originalIdx}` };
+                    return { displayName, isPremium, value: `${v.voiceURI}|${originalIdx}` };
                   })
                   .sort((a, b) => {
-                    const rank = (item: any) => {
-                      if (item.isPremium) return 2;
-                      if (item.isCompact) return -1;
-                      return 0;
-                    };
-                    const rA = rank(a);
-                    const rB = rank(b);
-                    if (rA !== rB) return rB - rA;
+                    if (a.isPremium !== b.isPremium) return a.isPremium ? -1 : 1;
                     return a.displayName.localeCompare(b.displayName);
                   })
                   .map((item) => (
@@ -615,7 +494,6 @@ function App() {
               </select>
             </div>
 
-            {/* Speed Control */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm text-gray-400">Tốc độ đọc</label>
@@ -637,10 +515,9 @@ function App() {
               </div>
             </div>
 
-            {/* Close Button */}
             <button
               onClick={() => setShowSettings(false)}
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-medium transition-colors"
+              className="w-full bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl font-medium transition-colors touch-manipulation"
             >
               Xong
             </button>
