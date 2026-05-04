@@ -485,7 +485,7 @@ function App() {
 
             {/* Voice Selection */}
             <div className="mb-6">
-              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
+              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc ({voices.length} giọng)</label>
               <select
                 value={selectedVoice}
                 onChange={(e) => setSelectedVoice(e.target.value)}
@@ -493,10 +493,16 @@ function App() {
               >
                 {voices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
-                    {voice.name}
+                    {voice.name} ({voice.lang})
                   </option>
                 ))}
               </select>
+              
+              {/* Debug info */}
+              <div className="mt-2 text-xs text-gray-500">
+                <div>Standalone: {window.matchMedia('(display-mode: standalone)').matches ? '✅ PWA' : '❌ Browser'}</div>
+                <div>Total voices: {window.speechSynthesis.getVoices().length}</div>
+              </div>
             </div>
 
             {/* Speed Control */}
