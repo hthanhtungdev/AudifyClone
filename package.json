@@ -7,9 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview",
-    "push": "git add -A && git commit -m \"Update\" && git push",
-    "deploy": "npm run build && npm run push"
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
