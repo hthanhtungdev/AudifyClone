@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, Square, Settings, Link2, Loader2, X } from 'lucide-react';
+import { Settings, Link2, Loader2 } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
 function App() {
@@ -18,8 +18,6 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-  const [showHeader, setShowHeader] = useState(true);
-  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const lastScrollY = useRef(0);
   const mainContentRef = useRef<HTMLDivElement>(null);
@@ -298,31 +296,8 @@ function App() {
         setIsAutoScrollEnabled(false);
       }
     }
-
-    setShowScrollTop(currentScrollY > 300);
-
-    if (currentScrollY > lastScrollY.current && currentScrollY > 100) {
-      setShowHeader(false);
-    } else if (currentScrollY < lastScrollY.current || currentScrollY < 10) {
-      setShowHeader(true);
-    }
     
     lastScrollY.current = currentScrollY;
-  };
-
-  const scrollToTop = () => {
-    if (mainContentRef.current) {
-      mainContentRef.current.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-      });
-      setShowHeader(true);
-    }
-  };
-
-  const handleStop = () => {
-    handlePause();
-    setHighlightCharIndex(-1);
   };
 
   return (
@@ -389,7 +364,6 @@ function App() {
 
                   const pStartIdx = currentGlobalIndex;
                   const pEndIdx = pStartIdx + segment.length;
-                  const isParagraphActive = highlightCharIndex >= pStartIdx && highlightCharIndex < pEndIdx;
 
                   return (
                     <p 
@@ -400,7 +374,6 @@ function App() {
                         const wordStartIdx = currentGlobalIndex;
                         const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
                         currentGlobalIndex += part.length;
-                        const isWhitespace = /^\s+$/.test(part);
                         return (
                           <span
                             key={i}
