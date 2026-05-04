@@ -144,9 +144,6 @@ function App() {
   const startSpeaking = (fromCharIndex: number = 0) => {
     if (!content) return;
 
-    // CRITICAL: Stop everything first
-    window.speechSynthesis.cancel();
-    
     // Haptic feedback
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate(10);
@@ -162,47 +159,61 @@ function App() {
     const textToSpeak = content.slice(startIndex);
     if (!textToSpeak.trim()) return;
 
-    // Create utterance immediately in user gesture
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    const voice = getSelectedVoice();
+    // iOS FIX: Cancel must be called BEFORE creating new utterance
+    window.speechSynthesis.cancel();
+    
+    // Wait a tiny bit for cancel to complete
+    setTimeout(() => {
+      // Create utterance
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      const voice = getSelectedVoice();
 
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang;
-    }
-
-    utterance.rate = speed;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        setCurrentCharIndex(startIndex + event.charIndex);
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      } else {
+        // Fallback to Vietnamese
+        utterance.lang = 'vi-VN';
       }
-    };
 
-    utterance.onstart = () => {
-      setIsPlaying(true);
-      setCurrentCharIndex(startIndex);
-    };
+      utterance.rate = speed;
+      utterance.pitch = 1;
+      utterance.volume = 1;
 
-    utterance.onend = () => {
-      setIsPlaying(false);
-      setCurrentCharIndex(-1);
-    };
+      utterance.onboundary = (event) => {
+        if (event.name === 'word') {
+          setCurrentCharIndex(startIndex + event.charIndex);
+        }
+      };
 
-    utterance.onerror = (event) => {
-      console.error('Speech error:', event.error);
-      setIsPlaying(false);
-      setCurrentCharIndex(-1);
-    };
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        setCurrentCharIndex(startIndex);
+      };
 
-    utteranceRef.current = utterance;
+      utterance.onend = () => {
+        setIsPlaying(false);
+        setCurrentCharIndex(-1);
+      };
 
-    // Speak immediately - no setTimeout
-    window.speechSynthesis.speak(utterance);
-    setIsPlaying(true);
-    setCurrentCharIndex(startIndex);
+      utterance.onerror = (event) => {
+        console.error('Speech error:', event.error);
+        // If canceled, try again
+        if (event.error === 'canceled' && utteranceRef.current) {
+          setTimeout(() => {
+            window.speechSynthesis.speak(utteranceRef.current!);
+          }, 100);
+        } else {
+          setIsPlaying(false);
+          setCurrentCharIndex(-1);
+        }
+      };
+
+      utteranceRef.current = utterance;
+
+      // Speak
+      window.speechSynthesis.speak(utterance);
+    }, 50);
   };
 
   const handlePlayPause = () => {
@@ -345,6 +356,19 @@ function App() {
             <h1 className="text-xl font-bold mb-4 pb-3 border-b border-gray-800">
               {content.split('\n')[0].slice(0, 80)}
             </h1>
+            
+            {/* TEST BUTTON */}
+            <button
+              onClick={() => {
+                const test = new SpeechSynthesisUtterance("Xin chào, đây là test");
+                test.lang = 'vi-VN';
+                test.rate = 1;
+                window.speechSynthesis.speak(test);
+              }}
+              className="mb-4 px-6 py-3 bg-green-600 text-white rounded-lg font-bold"
+            >
+              🔊 TEST GIỌNG ĐỌC
+            </button>
             
             <div className="text-[15px] leading-[1.7] text-gray-200">
               {content.split('\n').map((paragraph, pIndex) => {
