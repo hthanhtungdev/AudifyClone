@@ -27,10 +27,16 @@ function App() {
     setDebugLogs(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${message}`]);
   };
 
-  // Register Service Worker
+  // Register Service Worker - only in standalone mode
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    
+    if ('serviceWorker' in navigator && isStandalone) {
+      // Only register SW when running as PWA
       navigator.serviceWorker.register('/sw.js').catch(() => {});
+      addLog('Service Worker registered (PWA mode)');
+    } else {
+      addLog('Service Worker skipped (Browser mode)');
     }
   }, []);
 
