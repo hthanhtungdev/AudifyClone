@@ -13,7 +13,6 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentCharIndex, setCurrentCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-  const [touchStartInfo, setTouchStartInfo] = useState<{time: number, y: number} | null>(null);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -408,68 +407,39 @@ function App() {
                 const isActive = currentCharIndex >= paragraphStart && currentCharIndex < paragraphEnd;
                 
                 return (
-                  <p 
+                  <button
                     key={pIndex}
-                    onTouchStart={(e) => {
-                      setTouchStartInfo({
-                        time: Date.now(),
-                        y: e.touches[0].clientY
-                      });
-                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+                      console.log('👆 Pointer down on paragraph:', pIndex);
                     }}
-                    onTouchMove={(e) => {
-                      if (touchStartInfo) {
-                        const deltaY = Math.abs(e.touches[0].clientY - touchStartInfo.y);
-                        if (deltaY > 10) {
-                          e.currentTarget.style.backgroundColor = '';
-                        }
-                      }
-                    }}
-                    onTouchEnd={(e) => {
+                    onPointerUp={(e) => {
                       e.currentTarget.style.backgroundColor = '';
-                      
-                      if (touchStartInfo) {
-                        const deltaTime = Date.now() - touchStartInfo.time;
-                        const deltaY = Math.abs(e.changedTouches[0].clientY - touchStartInfo.y);
-                        
-                        // Only trigger if it's a quick tap (< 300ms) and minimal movement (< 10px)
-                        if (deltaTime < 300 && deltaY < 10) {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('✅ Valid tap on paragraph:', pIndex, 'at char:', paragraphStart);
-                          handleTextClick(paragraphStart);
-                        } else {
-                          console.log('❌ Scroll detected - deltaTime:', deltaTime, 'deltaY:', deltaY);
-                        }
-                      }
-                      
-                      setTouchStartInfo(null);
-                    }}
-                    onTouchCancel={(e) => {
-                      e.currentTarget.style.backgroundColor = '';
-                      setTouchStartInfo(null);
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      console.log('🖱️ Click on paragraph:', pIndex);
+                      console.log('👆 Pointer up on paragraph:', pIndex);
                       handleTextClick(paragraphStart);
                     }}
+                    onPointerCancel={(e) => {
+                      e.currentTarget.style.backgroundColor = '';
+                      console.log('❌ Pointer cancelled');
+                    }}
                     data-active={isActive ? "true" : "false"}
-                    className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-colors duration-150 ${
+                    className={`w-full text-left mb-4 px-4 py-3 rounded-lg select-none transition-colors duration-150 ${
                       isActive 
                         ? 'bg-blue-600/30 border-l-4 border-blue-400 text-white shadow-lg' 
-                        : 'bg-gray-900/30'
+                        : 'bg-gray-900/30 active:bg-blue-600/10'
                     }`}
                     style={{ 
                       WebkitTapHighlightColor: 'transparent',
                       touchAction: 'manipulation',
                       userSelect: 'none',
-                      WebkitUserSelect: 'none'
+                      WebkitUserSelect: 'none',
+                      border: 'none',
+                      outline: 'none'
                     }}
                   >
                     {paragraph}
-                  </p>
+                  </button>
                 );
               })}
             </div>
