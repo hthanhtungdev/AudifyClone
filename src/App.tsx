@@ -362,9 +362,6 @@ function App() {
                     return null;
                   }
 
-                  const pStartIdx = currentGlobalIndex;
-                  const pEndIdx = pStartIdx + segment.length;
-
                   return (
                     <p 
                       key={segIndex} 
