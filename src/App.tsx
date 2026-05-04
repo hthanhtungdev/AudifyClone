@@ -7,11 +7,9 @@ function App() {
   const [content, setContent] = useState(() => localStorage.getItem('audify_content') || '');
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentParagraph, setCurrentParagraph] = useState(-1);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
-  const [paragraphs, setParagraphs] = useState<string[]>([]);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
@@ -21,6 +19,8 @@ function App() {
   const contentRef = useRef<HTMLDivElement>(null);
   const pendingTimeoutRef = useRef<number | null>(null);
   const isProcessingRef = useRef(false);
+  const currentSentenceRef = useRef<HTMLElement | null>(null); // Track current sentence element
+  const shouldAutoPlayRef = useRef(true); // Control auto-play behavior
 
   // Debug logger
   const addLog = (message: string) => {
@@ -125,24 +125,10 @@ function App() {
     localStorage.setItem('audify_speed', speed.toString());
   }, [speed]);
 
-  // Split content into sentences
+  // Split content into sentences (for backward compatibility, not used anymore)
   useEffect(() => {
     if (content) {
-      // Split by sentence endings (. ! ? and newlines)
-      const sentences = content
-        .split(/([.!?]\s+|\n+)/)
-        .reduce((acc: string[], part, i, arr) => {
-          if (i % 2 === 0 && part.trim()) {
-            const sentence = part + (arr[i + 1] || '');
-            if (sentence.trim().length > 10) {
-              acc.push(sentence.trim());
-            }
-          }
-          return acc;
-        }, []);
-      
-      setParagraphs(sentences);
-      addLog(`Split into ${sentences.length} sentences`);
+      addLog(`Content loaded: ${content.length} characters`);
     }
   }, [content]);
 
@@ -217,7 +203,6 @@ function App() {
       }
 
       setContent(text.trim());
-      setCurrentParagraph(-1);
       addLog(`✓ Loaded ${text.length} characters`);
       
     } catch (err) {
@@ -230,6 +215,110 @@ function App() {
     }
   };
 
+  // Speak a specific element
+  const speakElement = (element: HTMLElement) => {
+    const text = element.textContent || '';
+    
+    if (!text || text.trim().length < 10) {
+      addLog('Text too short, skipping');
+      return;
+    }
+    
+    addLog(`Speaking: ${text.substring(0, 50)}...`);
+    
+    // Remove highlight from previous element (if different)
+    if (currentSentenceRef.current && currentSentenceRef.current !== element) {
+      currentSentenceRef.current.classList.remove('speaking');
+    }
+    
+    // Store current element
+    currentSentenceRef.current = element;
+    
+    // Cancel any current speech
+    window.speechSynthesis.cancel();
+    
+    // Highlight immediately (before speech starts)
+    element.classList.add('speaking');
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Small delay to ensure cancel completes
+    setTimeout(() => {
+      // Create and speak utterance
+      const utterance = new SpeechSynthesisUtterance(text.trim());
+      utterance.lang = 'vi-VN';
+      utterance.rate = speed;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      
+      utterance.onstart = () => {
+        setIsPlaying(true);
+        addLog('Speech started');
+      };
+      
+      utterance.onend = () => {
+        // Remove highlight
+        element.classList.remove('speaking');
+        
+        // Only auto-play if enabled
+        if (!shouldAutoPlayRef.current) {
+          setIsPlaying(false);
+          addLog('Auto-play disabled, stopping');
+          return;
+        }
+        
+        // Find next paragraph/heading
+        let nextElement: HTMLElement | null = null;
+        let sibling = element.nextElementSibling;
+        
+        while (sibling) {
+          if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+            nextElement = sibling as HTMLElement;
+            break;
+          }
+          const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+          if (child) {
+            nextElement = child as HTMLElement;
+            break;
+          }
+          sibling = sibling.nextElementSibling;
+        }
+        
+        // If no next sibling, try parent's next sibling
+        if (!nextElement && element.parentElement) {
+          let parentSibling = element.parentElement.nextElementSibling;
+          while (parentSibling && !nextElement) {
+            if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+              nextElement = parentSibling as HTMLElement;
+              break;
+            }
+            const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+            if (child) {
+              nextElement = child as HTMLElement;
+              break;
+            }
+            parentSibling = parentSibling.nextElementSibling;
+          }
+        }
+        
+        if (nextElement) {
+          addLog('Auto-playing next paragraph');
+          speakElement(nextElement);
+        } else {
+          setIsPlaying(false);
+          addLog('Finished all paragraphs');
+        }
+      };
+      
+      utterance.onerror = (e) => {
+        addLog(`Speech error: ${e.error}`);
+        setIsPlaying(false);
+        element.classList.remove('speaking');
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    }, 50);
+  };
+
   // Stop speaking
   const stopSpeaking = () => {
     // Clear any pending timeout
@@ -240,102 +329,32 @@ function App() {
     
     window.speechSynthesis.cancel();
     setIsPlaying(false);
+    
+    // Keep highlight on current element (don't clear it)
+    // This helps user see where they paused
+    
     utteranceRef.current = null;
     isProcessingRef.current = false;
-    addLog('Stopped');
+    addLog('Paused - position saved with highlight');
   };
 
-  // Speak paragraph - CRITICAL: Must be called directly from user event
-  const speakParagraph = (index: number) => {
-    addLog(`speakParagraph(${index})`);
-    console.log('speakParagraph called with index:', index);
-    
-    if (index < 0 || index >= paragraphs.length) {
-      addLog(`Invalid index: ${index}`);
-      console.error('Invalid index:', index, 'Total:', paragraphs.length);
+  // Resume speaking from current position
+  const resumeSpeaking = () => {
+    if (!currentSentenceRef.current) {
+      addLog('No saved position, starting from beginning');
+      // Find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
       return;
     }
-
-    // Clear any pending timeout immediately
-    if (pendingTimeoutRef.current) {
-      clearTimeout(pendingTimeoutRef.current);
-      pendingTimeoutRef.current = null;
-      addLog('Cleared pending timeout');
-    }
-
-    // Stop current speech immediately
-    window.speechSynthesis.cancel();
-    isProcessingRef.current = false;
-    addLog('Canceled previous speech');
-
-    // iOS FIX: Small delay after cancel
-    pendingTimeoutRef.current = setTimeout(() => {
-      pendingTimeoutRef.current = null;
-      
-      // Create utterance
-      const text = paragraphs[index];
-      addLog(`Text: ${text.substring(0, 30)}...`);
-      console.log('Speaking text:', text.substring(0, 50) + '...');
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-
-      // Always use system default voice (from iPhone Settings)
-      utterance.lang = 'vi-VN';
-      addLog('Using system default voice (iPhone Settings)');
-
-      utterance.rate = speed;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-
-      utterance.onstart = () => {
-        addLog(`✓ Speech started: ${index}`);
-        console.log('Speech started for index:', index);
-        setIsPlaying(true);
-        setCurrentParagraph(index);
-      };
-
-      utterance.onend = () => {
-        addLog(`✓ Speech ended: ${index}`);
-        console.log('Speech ended for index:', index);
-        
-        // Auto play next sentence
-        if (index + 1 < paragraphs.length) {
-          speakParagraph(index + 1);
-        } else {
-          setIsPlaying(false);
-          setCurrentParagraph(-1);
-        }
-      };
-
-      utterance.onerror = (e) => {
-        addLog(`✗ ERROR: ${e.error} at ${index}`);
-        console.error('Speech error:', e.error, 'for index:', index);
-        
-        // Don't retry on canceled - user might have clicked another sentence
-        if (e.error !== 'canceled') {
-          setIsPlaying(false);
-        }
-      };
-
-      utteranceRef.current = utterance;
-
-      // Speak
-      window.speechSynthesis.speak(utterance);
-      addLog('speak() called');
-
-      // Scroll to paragraph
-      scrollToParagraph(index);
-    }, 100);
-  };
-
-  // Scroll to paragraph
-  const scrollToParagraph = (index: number) => {
-    if (!contentRef.current) return;
-
-    const element = contentRef.current.querySelector(`[data-index="${index}"]`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
+    
+    addLog('Resuming from saved position');
+    // Resume the saved element
+    shouldAutoPlayRef.current = true;
+    speakElement(currentSentenceRef.current);
   };
 
   // Handle play/pause
@@ -345,23 +364,135 @@ function App() {
     if (isPlaying) {
       stopSpeaking();
     } else {
-      const startIndex = currentParagraph >= 0 ? currentParagraph : 0;
-      speakParagraph(startIndex);
+      resumeSpeaking();
     }
   };
 
   // Handle previous
   const handlePrevious = () => {
     addLog('Previous clicked');
-    const prevIndex = Math.max(0, currentParagraph - 1);
-    speakParagraph(prevIndex);
+    
+    // Stop current speech
+    window.speechSynthesis.cancel();
+    
+    // Clear current highlight
+    if (currentSentenceRef.current) {
+      currentSentenceRef.current.classList.remove('speaking');
+    }
+    
+    if (!currentSentenceRef.current) {
+      // If no current, find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
+      return;
+    }
+    
+    // Find previous paragraph
+    let prevElement: HTMLElement | null = null;
+    let sibling = currentSentenceRef.current.previousElementSibling;
+    
+    while (sibling) {
+      if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+        prevElement = sibling as HTMLElement;
+        break;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+    
+    // If no previous sibling, try parent's previous sibling
+    if (!prevElement && currentSentenceRef.current.parentElement) {
+      let parentSibling = currentSentenceRef.current.parentElement.previousElementSibling;
+      while (parentSibling && !prevElement) {
+        if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+          prevElement = parentSibling as HTMLElement;
+          break;
+        }
+        const paragraphs = parentSibling.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li');
+        if (paragraphs.length > 0) {
+          prevElement = paragraphs[paragraphs.length - 1] as HTMLElement;
+          break;
+        }
+        parentSibling = parentSibling.previousElementSibling;
+      }
+    }
+    
+    if (prevElement) {
+      addLog('Found previous paragraph');
+      shouldAutoPlayRef.current = true;
+      speakElement(prevElement);
+    } else {
+      addLog('No previous paragraph found');
+      setIsPlaying(false);
+    }
   };
 
   // Handle next
   const handleNext = () => {
     addLog('Next clicked');
-    const nextIndex = Math.min(paragraphs.length - 1, currentParagraph + 1);
-    speakParagraph(nextIndex);
+    
+    // Stop current speech
+    window.speechSynthesis.cancel();
+    
+    // Clear current highlight
+    if (currentSentenceRef.current) {
+      currentSentenceRef.current.classList.remove('speaking');
+    }
+    
+    if (!currentSentenceRef.current) {
+      // If no current, find first paragraph
+      const firstParagraph = contentRef.current?.querySelector('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
+      if (firstParagraph) {
+        shouldAutoPlayRef.current = true;
+        speakElement(firstParagraph);
+      }
+      return;
+    }
+    
+    // Find next paragraph
+    let nextElement: HTMLElement | null = null;
+    let sibling = currentSentenceRef.current.nextElementSibling;
+    
+    while (sibling) {
+      if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
+        nextElement = sibling as HTMLElement;
+        break;
+      }
+      const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+      if (child) {
+        nextElement = child as HTMLElement;
+        break;
+      }
+      sibling = sibling.nextElementSibling;
+    }
+    
+    // If no next sibling, try parent's next sibling
+    if (!nextElement && currentSentenceRef.current.parentElement) {
+      let parentSibling = currentSentenceRef.current.parentElement.nextElementSibling;
+      while (parentSibling && !nextElement) {
+        if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
+          nextElement = parentSibling as HTMLElement;
+          break;
+        }
+        const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
+        if (child) {
+          nextElement = child as HTMLElement;
+          break;
+        }
+        parentSibling = parentSibling.nextElementSibling;
+      }
+    }
+    
+    if (nextElement) {
+      addLog('Found next paragraph');
+      shouldAutoPlayRef.current = true;
+      speakElement(nextElement);
+    } else {
+      addLog('No next paragraph found');
+      setIsPlaying(false);
+    }
   };
 
   return (
@@ -401,52 +532,18 @@ function App() {
             onClick={(e) => {
               const target = e.target as HTMLElement;
               
-              // Get text from clicked element
-              let text = '';
+              // Get the closest text container
+              let textElement: HTMLElement | null = null;
               
               if (target.tagName === 'P' || target.tagName.match(/^H[1-6]$/)) {
-                text = target.textContent || '';
+                textElement = target;
               } else if (target.closest('p, h1, h2, h3, h4, h5, h6, li')) {
-                const parent = target.closest('p, h1, h2, h3, h4, h5, h6, li');
-                text = parent?.textContent || '';
-              } else {
-                text = target.textContent || '';
+                textElement = target.closest('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement;
               }
               
-              if (text && text.trim().length > 10) {
-                addLog(`Clicked: ${text.substring(0, 50)}...`);
-                
-                // Speak the text
-                window.speechSynthesis.cancel();
-                
-                const utterance = new SpeechSynthesisUtterance(text.trim());
-                utterance.lang = 'vi-VN';
-                utterance.rate = speed;
-                utterance.pitch = 1;
-                utterance.volume = 1;
-                
-                utterance.onstart = () => {
-                  setIsPlaying(true);
-                  // Highlight clicked element
-                  target.style.backgroundColor = '#3b82f6';
-                  target.style.color = 'white';
-                };
-                
-                utterance.onend = () => {
-                  setIsPlaying(false);
-                  // Remove highlight
-                  target.style.backgroundColor = '';
-                  target.style.color = '';
-                };
-                
-                utterance.onerror = (e) => {
-                  addLog(`Speech error: ${e.error}`);
-                  setIsPlaying(false);
-                  target.style.backgroundColor = '';
-                  target.style.color = '';
-                };
-                
-                window.speechSynthesis.speak(utterance);
+              if (textElement) {
+                shouldAutoPlayRef.current = true;
+                speakElement(textElement);
               }
             }}
             style={{
@@ -472,14 +569,14 @@ function App() {
 
       {/* Bottom Controls */}
       <div 
-        className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-4"
-        style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom))' }}
+        className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-3"
+        style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
       >
-        <div className="max-w-md mx-auto flex items-center justify-center gap-4">
+        <div className="max-w-md mx-auto flex items-center justify-center gap-3">
           <button
             onClick={handlePrevious}
-            disabled={!paragraphs.length || currentParagraph <= 0}
-            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all"
+            disabled={!rawHTML}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <SkipBack className="w-5 h-5" />
@@ -487,21 +584,21 @@ function App() {
 
           <button
             onClick={handlePlayPause}
-            disabled={!paragraphs.length}
-            className="p-5 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-30 transition-all shadow-lg"
+            disabled={!rawHTML}
+            className="p-4 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-30 transition-all shadow-lg flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             {isPlaying ? (
-              <Pause className="w-7 h-7 fill-current" />
+              <Pause className="w-6 h-6 fill-current" />
             ) : (
-              <Play className="w-7 h-7 fill-current" />
+              <Play className="w-6 h-6 fill-current" />
             )}
           </button>
 
           <button
             onClick={handleNext}
-            disabled={!paragraphs.length || currentParagraph >= paragraphs.length - 1}
-            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all"
+            disabled={!rawHTML}
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <SkipForward className="w-5 h-5" />
@@ -509,7 +606,7 @@ function App() {
 
           <button
             onClick={() => setShowSettings(true)}
-            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all"
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Settings className="w-5 h-5" />
@@ -517,11 +614,11 @@ function App() {
 
           <button
             onClick={() => setShowDebug(!showDebug)}
-            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all"
+            className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
             title="Debug"
           >
-            <span className="text-xs font-mono">🐛</span>
+            <span className="text-sm">🐛</span>
           </button>
         </div>
       </div>

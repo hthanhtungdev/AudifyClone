@@ -50,7 +50,13 @@ body {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
-/* Subtle hover effect for clickable text - preserves original styling */
+/* Highlight for currently speaking element */
+.web-content .speaking {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
+
+/* Subtle hover for paragraphs and headings */
 .web-content p:hover,
 .web-content h1:hover,
 .web-content h2:hover,
@@ -59,10 +65,9 @@ body {
 .web-content h5:hover,
 .web-content h6:hover,
 .web-content li:hover {
-  outline: 2px solid rgba(59, 130, 246, 0.3);
-  outline-offset: 2px;
+  background-color: rgba(59, 130, 246, 0.1) !important;
   cursor: pointer !important;
-  transition: outline 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
 .web-content p:active,
@@ -73,6 +78,5 @@ body {
 .web-content h5:active,
 .web-content h6:active,
 .web-content li:active {
-  outline: 2px solid rgba(59, 130, 246, 0.6);
-  outline-offset: 2px;
+  background-color: rgba(59, 130, 246, 0.2) !important;
 }
