@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Tự động thêm https:// nếu thiếu (thường bị thiếu khi copy từ address bar)
+    // Tự động thêm https:// nếu thiếu
     if (targetUrl.indexOf('http://') !== 0 && targetUrl.indexOf('https://') !== 0) {
       targetUrl = 'https://' + targetUrl;
     }
@@ -27,100 +27,104 @@ export default async function handler(req, res) {
     if (targetUrl.indexOf('docs.google.com/document/d/') !== -1) {
       try {
         const urlObj = new URL(targetUrl);
-        // Xoá /edit, /view, /preview
         urlObj.pathname = urlObj.pathname.replace(/\/(edit|view|preview).*$/, '');
-        // Thêm /mobilebasic
         if (!/\/mobilebasic$/.test(urlObj.pathname)) {
           urlObj.pathname = urlObj.pathname.replace(/\/$/, '') + '/mobilebasic';
         }
         targetUrl = urlObj.toString();
       } catch (e) {
-        // Ignore URL parsing errors and try with original
+        // Ignore URL parsing errors
       }
     }
 
-    // Giả lập trình duyệt để vượt qua một số rào cản bot cơ bản
-    const fetchResponse = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'vi-VN,vi;q=0.8,en-US;q=0.5,en;q=0.3',
-      }
-    });
-    
-    // Forward the content type if available
-    const contentType = fetchResponse.headers.get('content-type') || 'text/html; charset=utf-8';
-    res.setHeader('Content-Type', contentType);
+    // Parse URL to get origin
+    const urlObj = new URL(targetUrl);
+    const origin = urlObj.origin;
 
-    const text = await fetchResponse.text();
-    
-    // Inject interactive text-to-speech script
-    const injectedScript = `
-      <script>
-        console.log('[Audify] Interactive TTS script loaded');
-        
-        // Listen for text selection and click
-        document.addEventListener('click', function(e) {
-          const target = e.target;
-          
-          // Get text content from clicked element
-          let textContent = '';
-          
-          // Try to get paragraph or heading
-          if (target.tagName === 'P' || target.tagName.match(/^H[1-6]$/)) {
-            textContent = target.textContent;
-          } else if (target.closest('p, h1, h2, h3, h4, h5, h6, li, div')) {
-            const parent = target.closest('p, h1, h2, h3, h4, h5, h6, li, div');
-            textContent = parent.textContent;
-          } else {
-            textContent = target.textContent;
-          }
-          
-          if (textContent && textContent.trim().length > 10) {
-            console.log('[Audify] Text clicked:', textContent.substring(0, 50));
-            
-            // Send to parent window
-            window.parent.postMessage({
-              type: 'SPEAK_TEXT',
-              text: textContent.trim()
-            }, '*');
-            
-            // Visual feedback
-            target.style.backgroundColor = '#3b82f6';
-            target.style.color = 'white';
-            setTimeout(() => {
-              target.style.backgroundColor = '';
-              target.style.color = '';
-            }, 2000);
-          }
-        });
-        
-        // Add hover effect
-        const style = document.createElement('style');
-        style.textContent = \`
-          p:hover, h1:hover, h2:hover, h3:hover, h4:hover, h5:hover, h6:hover, li:hover {
-            background-color: rgba(59, 130, 246, 0.1) !important;
-            cursor: pointer !important;
-            transition: background-color 0.2s !important;
-          }
-        \`;
-        document.head.appendChild(style);
-        
-        console.log('[Audify] Click listener and hover styles added');
-      </script>
-    `;
-    
-    // Inject before </body> or </html> or at the end
-    let modifiedText = text;
-    if (text.includes('</body>')) {
-      modifiedText = text.replace('</body>', injectedScript + '</body>');
-    } else if (text.includes('</html>')) {
-      modifiedText = text.replace('</html>', injectedScript + '</html>');
-    } else {
-      modifiedText = text + injectedScript;
+    // Try multiple strategies
+    let fetchResponse;
+    let lastError;
+
+    // Strategy 1: Simple fetch with minimal headers
+    try {
+      fetchResponse = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'vi-VN,vi;q=0.8,en-US;q=0.5,en;q=0.3',
+        },
+        redirect: 'follow'
+      });
+      
+      if (fetchResponse.ok) {
+        const contentType = fetchResponse.headers.get('content-type') || 'text/html; charset=utf-8';
+        res.setHeader('Content-Type', contentType);
+        const text = await fetchResponse.text();
+        return res.status(fetchResponse.status).send(text);
+      }
+      lastError = `Strategy 1 failed: ${fetchResponse.status}`;
+    } catch (e) {
+      lastError = `Strategy 1 error: ${e.message}`;
     }
+
+    // Strategy 2: With full browser headers
+    try {
+      fetchResponse = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': origin + '/',
+          'Origin': origin,
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'same-origin',
+          'Sec-Fetch-User': '?1',
+          'Cache-Control': 'max-age=0'
+        },
+        redirect: 'follow'
+      });
+      
+      if (fetchResponse.ok) {
+        const contentType = fetchResponse.headers.get('content-type') || 'text/html; charset=utf-8';
+        res.setHeader('Content-Type', contentType);
+        const text = await fetchResponse.text();
+        return res.status(fetchResponse.status).send(text);
+      }
+      lastError = `Strategy 2 failed: ${fetchResponse.status}`;
+    } catch (e) {
+      lastError = `Strategy 2 error: ${e.message}`;
+    }
+
+    // Strategy 3: Mobile User-Agent
+    try {
+      fetchResponse = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'vi-VN,vi;q=0.9',
+        },
+        redirect: 'follow'
+      });
+      
+      if (fetchResponse.ok) {
+        const contentType = fetchResponse.headers.get('content-type') || 'text/html; charset=utf-8';
+        res.setHeader('Content-Type', contentType);
+        const text = await fetchResponse.text();
+        return res.status(fetchResponse.status).send(text);
+      }
+      lastError = `Strategy 3 failed: ${fetchResponse.status}`;
+    } catch (e) {
+      lastError = `Strategy 3 error: ${e.message}`;
+    }
+
+    // All strategies failed
+    res.status(fetchResponse?.status || 500).send(`All fetch strategies failed. Last error: ${lastError}`);
     
-    res.status(fetchResponse.status).send(modifiedText);
   } catch (e) {
     res.status(500).send(e.message || 'Internal Server Error');
   }
