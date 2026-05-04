@@ -79,6 +79,7 @@ function App() {
   useEffect(() => {
     if (!content) {
       wordsRef.current = [];
+      console.log('No content, clearing words');
       return;
     }
 
@@ -87,6 +88,8 @@ function App() {
 
     // Split by whitespace but keep track of positions
     const tokens = content.match(/\S+|\s+/g) || [];
+    
+    console.log('Parsing content into words, total tokens:', tokens.length);
     
     tokens.forEach(token => {
       const start = currentIndex;
@@ -100,6 +103,8 @@ function App() {
     });
 
     wordsRef.current = words;
+    console.log('Total words parsed:', words.length);
+    console.log('First 5 words:', words.slice(0, 5));
   }, [content]);
 
   const fetchContent = async () => {
@@ -173,7 +178,12 @@ function App() {
   };
 
   const startSpeaking = (fromWordIndex: number = 0) => {
-    if (!content || wordsRef.current.length === 0) return;
+    if (!content || wordsRef.current.length === 0) {
+      console.log('No content or words to speak');
+      return;
+    }
+
+    console.log('Starting speech from word index:', fromWordIndex);
 
     // Stop any current speech
     stopSpeaking();
@@ -187,7 +197,16 @@ function App() {
     const startIndex = Math.max(0, Math.min(fromWordIndex, wordsRef.current.length - 1));
     const textToSpeak = wordsRef.current.slice(startIndex).map(w => w.text).join('');
 
-    if (!textToSpeak.trim()) return;
+    console.log('Text to speak:', textToSpeak.slice(0, 100));
+
+    if (!textToSpeak.trim()) {
+      console.log('No text to speak after trim');
+      return;
+    }
+
+    // Unlock audio on iOS
+    const wakeUp = new SpeechSynthesisUtterance("");
+    window.speechSynthesis.speak(wakeUp);
 
     // Create utterance
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
@@ -196,6 +215,7 @@ function App() {
     if (voice) {
       utterance.voice = voice;
       utterance.lang = voice.lang;
+      console.log('Using voice:', voice.name);
     }
 
     utterance.rate = speed;
@@ -226,12 +246,14 @@ function App() {
     };
 
     utterance.onstart = () => {
+      console.log('Speech started');
       setIsPlaying(true);
       setCurrentWordIndex(startIndex);
       currentWordIndexRef.current = startIndex;
     };
 
     utterance.onend = () => {
+      console.log('Speech ended');
       setIsPlaying(false);
       setCurrentWordIndex(-1);
       currentWordIndexRef.current = -1;
@@ -246,10 +268,14 @@ function App() {
 
     utteranceRef.current = utterance;
 
-    // Speak
+    // Speak with delay to ensure everything is ready
     setTimeout(() => {
+      console.log('Calling speechSynthesis.speak()');
+      window.speechSynthesis.cancel(); // Clear queue
       window.speechSynthesis.speak(utterance);
-    }, 50);
+      console.log('Speaking:', window.speechSynthesis.speaking);
+      console.log('Pending:', window.speechSynthesis.pending);
+    }, 100);
   };
 
   const handlePlayPause = () => {
@@ -263,6 +289,7 @@ function App() {
   };
 
   const handleWordClick = (wordIndex: number) => {
+    console.log('Word clicked:', wordIndex, wordsRef.current[wordIndex]?.text);
     setIsAutoScrollEnabled(true);
     startSpeaking(wordIndex);
   };
