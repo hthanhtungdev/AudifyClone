@@ -333,6 +333,7 @@ function App() {
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
+            onFocus={(e) => e.target.select()}
             placeholder="Nhập URL..."
             className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
             onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
