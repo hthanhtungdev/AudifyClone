@@ -52,7 +52,7 @@ function App() {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
       
-      // Get Vietnamese voices - more flexible filter
+      // Get Vietnamese voices
       const viVoices = allVoices.filter(v => 
         v.lang.toLowerCase().includes('vi') || 
         v.name.toLowerCase().includes('linh') ||
@@ -60,19 +60,14 @@ function App() {
       );
       
       addLog(`Found ${viVoices.length} Vietnamese voices out of ${allVoices.length} total`);
+      
+      // Add "System Default" option at the beginning
       setVoices(viVoices);
       
-      if (!selectedVoice && viVoices.length > 0) {
-        // Prefer Enhanced/Premium voice
-        const enhanced = viVoices.find(v => 
-          v.name.toLowerCase().includes('enhanced') ||
-          v.name.toLowerCase().includes('nâng cao') ||
-          v.name.toLowerCase().includes('premium')
-        );
-        
-        const defaultVoice = enhanced || viVoices[0];
-        setSelectedVoice(defaultVoice.name);
-        addLog(`Selected default voice: ${defaultVoice.name}`);
+      if (!selectedVoice) {
+        // Use empty string for system default
+        setSelectedVoice('');
+        addLog('Using system default voice');
       }
     };
 
@@ -216,15 +211,21 @@ function App() {
       
       const utterance = new SpeechSynthesisUtterance(text);
 
-      // Set voice
-      const voice = voices.find(v => v.name === selectedVoice);
-      if (voice) {
-        utterance.voice = voice;
-        utterance.lang = voice.lang;
-        addLog(`Voice: ${voice.name}`);
+      // Set voice - if empty, use system default
+      if (selectedVoice) {
+        const voice = voices.find(v => v.name === selectedVoice);
+        if (voice) {
+          utterance.voice = voice;
+          utterance.lang = voice.lang;
+          addLog(`Voice: ${voice.name}`);
+        } else {
+          utterance.lang = 'vi-VN';
+          addLog('Voice: vi-VN fallback');
+        }
       } else {
+        // Use system default - this will use "Linh (Nâng cao)" if set in iPhone Settings
         utterance.lang = 'vi-VN';
-        addLog('Voice: default vi-VN');
+        addLog('Voice: System Default (from iPhone Settings)');
       }
 
       utterance.rate = speed;
@@ -502,23 +503,22 @@ function App() {
 
             {/* Voice Selection */}
             <div className="mb-6">
-              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc ({voices.length} giọng)</label>
+              <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
               <select
                 value={selectedVoice}
                 onChange={(e) => setSelectedVoice(e.target.value)}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:border-blue-500"
               >
+                <option value="">🎯 Mặc định hệ thống (Khuyên dùng)</option>
                 {voices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
-                    {voice.name} ({voice.lang})
+                    {voice.name}
                   </option>
                 ))}
               </select>
               
-              {/* Debug info */}
-              <div className="mt-2 text-xs text-gray-500">
-                <div>Standalone: {window.matchMedia('(display-mode: standalone)').matches ? '✅ PWA' : '❌ Browser'}</div>
-                <div>Total voices: {window.speechSynthesis.getVoices().length}</div>
+              <div className="mt-2 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg text-xs text-blue-300">
+                💡 <strong>Mẹo:</strong> Chọn "Mặc định hệ thống" để dùng giọng <strong>Linh (Nâng cao)</strong> từ Settings iPhone → Accessibility → Spoken Content → Voices
               </div>
             </div>
 
