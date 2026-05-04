@@ -13,19 +13,12 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentCharIndex, setCurrentCharIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const [showDebug, setShowDebug] = useState(false);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const lastScrollTime = useRef(0);
   const isScrollingToRef = useRef(false);
-
-  // Custom console.log that also shows on screen
-  const debugLog = (message: string) => {
-    console.log(message);
-    setDebugLogs(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${message}`]);
-  };
+  const isInitialized = useRef(false);
 
   // Sync state with localStorage
   useEffect(() => {
@@ -147,21 +140,14 @@ function App() {
       utteranceRef.current = null;
     }
     setIsPlaying(false);
-    setCurrentCharIndex(-1);
   };
 
   const startSpeaking = (fromCharIndex: number = 0) => {
-    if (!content) {
-      debugLog('❌ No content to speak');
-      return;
-    }
+    if (!content) return;
 
-    debugLog(`▶️ Starting speech from char: ${fromCharIndex}`);
-    debugLog(`📢 Available voices: ${voices.length}`);
-    debugLog(`🎤 Selected voice: ${selectedVoiceName || 'default'}`);
-
-    stopSpeaking();
-
+    // CRITICAL: Stop everything first
+    window.speechSynthesis.cancel();
+    
     // Haptic feedback
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate(10);
@@ -175,85 +161,52 @@ function App() {
     }
 
     const textToSpeak = content.slice(startIndex);
-    console.log('Text to speak (first 100 chars):', textToSpeak.slice(0, 100));
-    
-    if (!textToSpeak.trim()) {
-      console.log('No text to speak after trim');
-      return;
+    if (!textToSpeak.trim()) return;
+
+    // Create utterance immediately in user gesture
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    const voice = getSelectedVoice();
+
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
     }
 
-    // CRITICAL: Unlock audio on iOS - must be called in user gesture
-    try {
-      const wakeUp = new SpeechSynthesisUtterance("");
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(wakeUp);
-      console.log('Audio unlocked');
-    } catch (e) {
-      console.error('Failed to unlock audio:', e);
-    }
+    utterance.rate = speed;
+    utterance.pitch = 1;
+    utterance.volume = 1;
 
-    // Small delay to ensure unlock completes
-    setTimeout(() => {
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      const voice = getSelectedVoice();
-
-      if (voice) {
-        utterance.voice = voice;
-        utterance.lang = voice.lang;
-        console.log('Using voice:', voice.name);
-      } else {
-        console.log('No voice selected, using default');
+    utterance.onboundary = (event) => {
+      if (event.name === 'word') {
+        setCurrentCharIndex(startIndex + event.charIndex);
       }
+    };
 
-      utterance.rate = speed;
-      utterance.pitch = 1;
-      utterance.volume = 1;
+    utterance.onstart = () => {
+      setIsPlaying(true);
+      setCurrentCharIndex(startIndex);
+    };
 
-      utterance.onboundary = (event) => {
-        if (event.name === 'word') {
-          setCurrentCharIndex(startIndex + event.charIndex);
-        }
-      };
+    utterance.onend = () => {
+      setIsPlaying(false);
+      setCurrentCharIndex(-1);
+    };
 
-      utterance.onstart = () => {
-        debugLog('✅ Speech STARTED successfully');
-        setIsPlaying(true);
-        setCurrentCharIndex(startIndex);
-      };
+    utterance.onerror = (event) => {
+      console.error('Speech error:', event.error);
+      setIsPlaying(false);
+      setCurrentCharIndex(-1);
+    };
 
-      utterance.onend = () => {
-        debugLog('⏹️ Speech ENDED');
-        setIsPlaying(false);
-        setCurrentCharIndex(-1);
-      };
+    utteranceRef.current = utterance;
 
-      utterance.onerror = (event) => {
-        debugLog(`❌ Speech ERROR: ${event.error}`);
-        console.error('Speech error:', event.error, event);
-        setIsPlaying(false);
-        setCurrentCharIndex(-1);
-      };
-
-      utteranceRef.current = utterance;
-
-      // Speak
-      window.speechSynthesis.cancel(); // Clear any pending
-      window.speechSynthesis.speak(utterance);
-      
-      console.log('speechSynthesis.speaking:', window.speechSynthesis.speaking);
-      console.log('speechSynthesis.pending:', window.speechSynthesis.pending);
-      console.log('speechSynthesis.paused:', window.speechSynthesis.paused);
-    }, 50);
+    // Speak immediately - no setTimeout
+    window.speechSynthesis.speak(utterance);
+    setIsPlaying(true);
+    setCurrentCharIndex(startIndex);
   };
 
   const handlePlayPause = () => {
-    console.log('Play/Pause clicked, isPlaying:', isPlaying);
-    
-    // Haptic feedback
-    if (window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate(30);
-    }
-    
     if (isPlaying) {
       stopSpeaking();
     } else {
@@ -264,16 +217,7 @@ function App() {
   };
 
   const handleTextClick = (charIndex: number) => {
-    debugLog(`👆 TEXT CLICKED at char: ${charIndex}`);
-    
-    // Visual feedback
-    if (window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate(50);
-    }
-    
     setIsAutoScrollEnabled(true);
-    
-    // Call startSpeaking directly in the click handler (important for iOS)
     startSpeaking(charIndex);
   };
 
@@ -336,7 +280,6 @@ function App() {
   };
 
   const handlePrevious = () => {
-    console.log('Previous clicked');
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate(30);
     }
@@ -346,7 +289,6 @@ function App() {
   };
 
   const handleNext = () => {
-    console.log('Next clicked');
     if (window.navigator && window.navigator.vibrate) {
       window.navigator.vibrate(30);
     }
@@ -359,7 +301,7 @@ function App() {
     <div className="w-full h-screen bg-black text-white flex flex-col font-sans overflow-hidden">
       {/* Top Bar */}
       <div className="bg-[#1c1c1e] border-b border-gray-800 px-3 py-2.5 flex items-center gap-2 flex-shrink-0">
-        <button className="p-2 active:bg-gray-800 rounded-lg transition-colors touch-manipulation">
+        <button className="p-2 active:bg-gray-800 rounded-lg transition-colors">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
             <path d="M3 12h18M3 6h18M3 18h18"/>
           </svg>
@@ -379,7 +321,7 @@ function App() {
         <button 
           onClick={fetchContent}
           disabled={loading}
-          className="p-2 active:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 touch-manipulation flex-shrink-0"
+          className="p-2 active:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 flex-shrink-0"
         >
           {loading ? (
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -395,17 +337,16 @@ function App() {
       {/* Main Content */}
       <main 
         ref={mainContentRef}
-        className="flex-1 overflow-y-auto px-4 py-4 pb-24 -webkit-overflow-scrolling-touch"
+        className="flex-1 overflow-y-auto px-4 py-4 pb-24"
+        style={{ WebkitOverflowScrolling: 'touch' }}
         onScroll={handleScroll}
       >
         {content ? (
           <div className="max-w-2xl mx-auto">
-            {/* Title */}
             <h1 className="text-xl font-bold mb-4 pb-3 border-b border-gray-800">
               {content.split('\n')[0].slice(0, 80)}
             </h1>
             
-            {/* Content */}
             <div className="text-[15px] leading-[1.7] text-gray-200">
               {content.split('\n').map((paragraph, pIndex) => {
                 if (!paragraph.trim()) return null;
@@ -415,35 +356,23 @@ function App() {
                 const isActive = currentCharIndex >= paragraphStart && currentCharIndex < paragraphEnd;
                 
                 return (
-                  <button
+                  <div
                     key={pIndex}
-                    type="button"
-                    onPointerDown={(e) => {
-                      e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
-                      debugLog(`� Pointer DOWN on p${pIndex}`);
-                    }}
-                    onPointerUp={(e) => {
-                      e.currentTarget.style.backgroundColor = '';
-                      debugLog(`👆 Pointer UP on p${pIndex}`);
-                      handleTextClick(paragraphStart);
-                    }}
+                    onClick={() => handleTextClick(paragraphStart)}
                     data-active={isActive ? "true" : "false"}
-                    className={`w-full text-left mb-4 px-4 py-3 rounded-lg select-none transition-colors duration-150 ${
+                    className={`mb-4 px-4 py-3 rounded-lg cursor-pointer select-none transition-colors duration-200 ${
                       isActive 
                         ? 'bg-blue-600/30 border-l-4 border-blue-400 text-white shadow-lg' 
                         : 'bg-gray-900/30 active:bg-blue-600/10'
                     }`}
                     style={{ 
                       WebkitTapHighlightColor: 'transparent',
-                      touchAction: 'manipulation',
                       userSelect: 'none',
-                      WebkitUserSelect: 'none',
-                      border: 'none',
-                      outline: 'none'
+                      WebkitUserSelect: 'none'
                     }}
                   >
                     {paragraph}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -460,33 +389,14 @@ function App() {
       {!isAutoScrollEnabled && isPlaying && (
         <button 
           onClick={() => setIsAutoScrollEnabled(true)}
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600 active:bg-blue-700 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10 touch-manipulation"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600 active:bg-blue-700 text-white px-4 py-2 rounded-full shadow-lg text-sm font-medium z-10"
         >
           Tiếp tục cuộn tự động
         </button>
       )}
 
-      {/* Debug Panel */}
-      {showDebug && (
-        <div className="fixed top-16 left-0 right-0 bg-black/95 text-green-400 p-4 z-[200] max-h-64 overflow-y-auto text-xs font-mono border-b border-green-500">
-          <div className="flex justify-between items-center mb-2">
-            <span className="font-bold">🐛 Debug Logs</span>
-            <button 
-              onClick={() => setDebugLogs([])}
-              className="text-red-400 text-xs"
-            >
-              Clear
-            </button>
-          </div>
-          {debugLogs.map((log, i) => (
-            <div key={i} className="mb-1">{log}</div>
-          ))}
-          {debugLogs.length === 0 && <div className="text-gray-500">No logs yet...</div>}
-        </div>
-      )}
-
       {/* Bottom Control Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-4 py-3 safe-area-inset-bottom z-50 flex-shrink-0">
+      <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-4 py-3 z-50 flex-shrink-0" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
         <div className="flex items-center justify-between max-w-md mx-auto">
           <button
             onClick={handlePrevious}
@@ -541,12 +451,12 @@ function App() {
           </button>
 
           <button 
-            onClick={() => setShowDebug(!showDebug)}
-            className={`p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all ${showDebug ? 'text-green-500' : ''}`}
+            onClick={() => window.location.reload()}
+            className="p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
-              <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
             </svg>
           </button>
         </div>
@@ -559,8 +469,9 @@ function App() {
           onClick={() => setShowSettings(false)}
         >
           <div 
-            className="bg-[#1c1c1e] w-full rounded-t-3xl p-6 pb-8 animate-in slide-in-from-bottom duration-300 max-h-[80vh] overflow-y-auto"
+            className="bg-[#1c1c1e] w-full rounded-t-3xl p-6 pb-8 max-h-[80vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
+            style={{ paddingBottom: 'max(32px, calc(env(safe-area-inset-bottom) + 32px))' }}
           >
             <div className="w-12 h-1 bg-gray-600 rounded-full mx-auto mb-6"></div>
             
@@ -571,7 +482,7 @@ function App() {
               <select
                 value={selectedVoiceName}
                 onChange={(e) => setSelectedVoiceName(e.target.value)}
-                className="w-full bg-[#2c2c2e] border border-gray-700 rounded-xl p-3 text-white outline-none touch-manipulation"
+                className="w-full bg-[#2c2c2e] border border-gray-700 rounded-xl p-3 text-white outline-none"
               >
                 <option value="">Mặc định thiết bị</option>
                 
@@ -628,7 +539,7 @@ function App() {
 
             <button
               onClick={() => setShowSettings(false)}
-              className="w-full bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl font-medium transition-colors touch-manipulation"
+              className="w-full bg-blue-600 active:bg-blue-700 text-white py-3 rounded-xl font-medium transition-colors"
             >
               Xong
             </button>
