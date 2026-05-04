@@ -531,23 +531,56 @@ function App() {
 
             {/* Speed Control */}
             <div className="mb-6">
-              <div className="flex justify-between mb-2">
+              <div className="flex justify-between items-center mb-3">
                 <label className="text-sm text-gray-400">Tốc độ</label>
-                <span className="text-sm text-blue-500 font-medium">{speed.toFixed(1)}x</span>
+                <span className="text-lg text-blue-500 font-bold">{speed.toFixed(1)}x</span>
               </div>
-              <input
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                value={speed}
-                onChange={(e) => setSpeed(parseFloat(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>0.5x</span>
-                <span>1.0x</span>
-                <span>2.0x</span>
+              
+              {/* Buttons for precise control */}
+              <div className="flex items-center gap-3 mb-3">
+                <button
+                  onClick={() => setSpeed(Math.max(0.5, speed - 0.1))}
+                  className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
+                >
+                  −
+                </button>
+                
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2.0"
+                  step="0.1"
+                  value={speed}
+                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                  className="flex-1 h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                  style={{
+                    WebkitAppearance: 'none',
+                  }}
+                />
+                
+                <button
+                  onClick={() => setSpeed(Math.min(2.0, speed + 0.1))}
+                  className="w-12 h-12 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-xl flex items-center justify-center text-2xl font-bold transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              
+              {/* Quick preset buttons */}
+              <div className="grid grid-cols-4 gap-2">
+                {[0.8, 1.0, 1.2, 1.5].map((presetSpeed) => (
+                  <button
+                    key={presetSpeed}
+                    onClick={() => setSpeed(presetSpeed)}
+                    className={`py-2 rounded-lg text-sm font-medium transition-colors ${
+                      Math.abs(speed - presetSpeed) < 0.05
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {presetSpeed}x
+                  </button>
+                ))}
               </div>
             </div>
 
