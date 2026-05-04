@@ -241,6 +241,7 @@ function App() {
 
   // Handle paragraph click
   const handleParagraphClick = (index: number) => {
+    addLog(`Clicked paragraph ${index}`);
     console.log('Clicked paragraph index:', index);
     console.log('Total paragraphs:', paragraphs.length);
     console.log('Paragraph text:', paragraphs[index]?.substring(0, 50));
