@@ -176,22 +176,17 @@ function App() {
       return;
     }
 
-    // Prevent overlapping calls
-    if (isProcessingRef.current) {
-      addLog('Already processing, canceling...');
-      stopSpeaking();
-    }
-    
-    isProcessingRef.current = true;
-
-    // Clear any pending timeout
+    // Clear any pending timeout immediately
     if (pendingTimeoutRef.current) {
       clearTimeout(pendingTimeoutRef.current);
       pendingTimeoutRef.current = null;
+      addLog('Cleared pending timeout');
     }
 
-    // Stop current speech
+    // Stop current speech immediately
     window.speechSynthesis.cancel();
+    isProcessingRef.current = false;
+    addLog('Canceled previous speech');
 
     // iOS FIX: Small delay after cancel
     pendingTimeoutRef.current = setTimeout(() => {
@@ -224,13 +219,11 @@ function App() {
         console.log('Speech started for index:', index);
         setIsPlaying(true);
         setCurrentParagraph(index);
-        isProcessingRef.current = false;
       };
 
       utterance.onend = () => {
         addLog(`✓ Speech ended: ${index}`);
         console.log('Speech ended for index:', index);
-        isProcessingRef.current = false;
         
         // Auto play next sentence
         if (index + 1 < paragraphs.length) {
@@ -244,15 +237,9 @@ function App() {
       utterance.onerror = (e) => {
         addLog(`✗ ERROR: ${e.error} at ${index}`);
         console.error('Speech error:', e.error, 'for index:', index);
-        isProcessingRef.current = false;
         
-        // iOS workaround: If canceled, try once more
-        if (e.error === 'canceled' && index === currentParagraph) {
-          addLog('Retrying after cancel...');
-          setTimeout(() => {
-            window.speechSynthesis.speak(utterance);
-          }, 100);
-        } else {
+        // Don't retry on canceled - user might have clicked another sentence
+        if (e.error !== 'canceled') {
           setIsPlaying(false);
         }
       };
@@ -280,6 +267,8 @@ function App() {
 
   // Handle play/pause
   const handlePlayPause = () => {
+    addLog(`Play/Pause clicked, isPlaying: ${isPlaying}`);
+    
     if (isPlaying) {
       stopSpeaking();
     } else {
@@ -290,12 +279,14 @@ function App() {
 
   // Handle previous
   const handlePrevious = () => {
+    addLog('Previous clicked');
     const prevIndex = Math.max(0, currentParagraph - 1);
     speakParagraph(prevIndex);
   };
 
   // Handle next
   const handleNext = () => {
+    addLog('Next clicked');
     const nextIndex = Math.min(paragraphs.length - 1, currentParagraph + 1);
     speakParagraph(nextIndex);
   };
