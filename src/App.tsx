@@ -9,7 +9,6 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentParagraph, setCurrentParagraph] = useState(-1);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [showSettings, setShowSettings] = useState(false);
   const [paragraphs, setParagraphs] = useState<string[]>([]);
@@ -53,25 +52,14 @@ function App() {
     }
   }, []);
 
-  // Load voices
+  // Load voices - simplified
   useEffect(() => {
     const loadVoices = () => {
       const allVoices = window.speechSynthesis.getVoices();
+      addLog(`Total voices available: ${allVoices.length}`);
       
-      // Get Vietnamese voices
-      const viVoices = allVoices.filter(v => 
-        v.lang.toLowerCase().includes('vi') || 
-        v.name.toLowerCase().includes('linh') ||
-        v.name.toLowerCase().includes('vietnam')
-      );
-      
-      addLog(`Found ${viVoices.length} Vietnamese voices out of ${allVoices.length} total`);
-      
-      // Add "System Default" option at the beginning
-      setVoices(viVoices);
-      
+      // Always use system default
       if (!selectedVoice) {
-        // Use empty string for system default
         setSelectedVoice('');
         addLog('Using system default voice');
       }
@@ -217,22 +205,9 @@ function App() {
       
       const utterance = new SpeechSynthesisUtterance(text);
 
-      // Set voice - if empty, use system default
-      if (selectedVoice) {
-        const voice = voices.find(v => v.name === selectedVoice);
-        if (voice) {
-          utterance.voice = voice;
-          utterance.lang = voice.lang;
-          addLog(`Voice: ${voice.name}`);
-        } else {
-          utterance.lang = 'vi-VN';
-          addLog('Voice: vi-VN fallback');
-        }
-      } else {
-        // Use system default - this will use "Linh (Nâng cao)" if set in iPhone Settings
-        utterance.lang = 'vi-VN';
-        addLog('Voice: System Default (from iPhone Settings)');
-      }
+      // Always use system default voice (from iPhone Settings)
+      utterance.lang = 'vi-VN';
+      addLog('Using system default voice (iPhone Settings)');
 
       utterance.rate = speed;
       utterance.pitch = 1;
@@ -508,24 +483,24 @@ function App() {
             
             <h2 className="text-xl font-bold mb-6">Cài đặt</h2>
 
-            {/* Voice Selection */}
+            {/* Voice Selection - Simplified */}
             <div className="mb-6">
               <label className="text-sm text-gray-400 mb-2 block">Giọng đọc</label>
-              <select
-                value={selectedVoice}
-                onChange={(e) => setSelectedVoice(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 outline-none focus:border-blue-500"
-              >
-                <option value="">🎯 Mặc định hệ thống (Khuyên dùng)</option>
-                {voices.map((voice) => (
-                  <option key={voice.name} value={voice.name}>
-                    {voice.name}
-                  </option>
-                ))}
-              </select>
+              <div className="p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-xl">
+                    🎯
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium text-white">Mặc định hệ thống</div>
+                    <div className="text-xs text-gray-400">Sử dụng giọng từ Settings iPhone</div>
+                  </div>
+                  <div className="text-green-500 text-xl">✓</div>
+                </div>
+              </div>
               
-              <div className="mt-2 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg text-xs text-blue-300">
-                💡 <strong>Mẹo:</strong> Chọn "Mặc định hệ thống" để dùng giọng <strong>Linh (Nâng cao)</strong> từ Settings iPhone → Accessibility → Spoken Content → Voices
+              <div className="mt-3 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg text-xs text-blue-300">
+                💡 <strong>Mẹo:</strong> Để thay đổi giọng đọc, vào Settings iPhone → Accessibility → Spoken Content → Voices → Chọn <strong>Linh (Nâng cao)</strong>
               </div>
             </div>
 
