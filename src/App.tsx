@@ -295,12 +295,20 @@ function App() {
   };
 
   const handlePrevious = () => {
+    console.log('Previous clicked');
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(30);
+    }
     const prevIndex = Math.max(0, currentCharIndex - 200);
     setIsAutoScrollEnabled(true);
     startSpeaking(prevIndex);
   };
 
   const handleNext = () => {
+    console.log('Next clicked');
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(30);
+    }
     const nextIndex = Math.min(content.length - 1, currentCharIndex + 200);
     setIsAutoScrollEnabled(true);
     startSpeaking(nextIndex);
@@ -416,7 +424,8 @@ function App() {
           <button
             onClick={handlePrevious}
             disabled={!content}
-            className="p-2.5 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
+            className="p-3 disabled:opacity-30 active:scale-90 active:bg-gray-800 rounded-lg transition-all"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
               <path d="M19 12H5M12 19l-7-7 7-7"/>
@@ -426,7 +435,8 @@ function App() {
           <button
             onClick={handleNext}
             disabled={!content}
-            className="p-2.5 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
+            className="p-3 disabled:opacity-30 active:scale-90 active:bg-gray-800 rounded-lg transition-all"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-6 h-6">
               <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -436,7 +446,8 @@ function App() {
           <button
             onClick={handlePlayPause}
             disabled={!content}
-            className="p-3 disabled:opacity-30 active:scale-95 transition-all touch-manipulation"
+            className="p-4 disabled:opacity-30 active:scale-90 active:bg-gray-800 rounded-full transition-all"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             {isPlaying ? (
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-blue-500">
@@ -450,13 +461,22 @@ function App() {
           </button>
 
           <button
-            onClick={() => setShowSettings(!showSettings)}
-            className={`p-2.5 active:scale-95 transition-all touch-manipulation ${showSettings ? 'text-blue-500' : ''}`}
+            onClick={() => {
+              if (window.navigator && window.navigator.vibrate) {
+                window.navigator.vibrate(30);
+              }
+              setShowSettings(!showSettings);
+            }}
+            className={`p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all ${showSettings ? 'text-blue-500' : ''}`}
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <Settings className="w-6 h-6" />
           </button>
 
-          <button className="p-2.5 active:scale-95 transition-all touch-manipulation">
+          <button 
+            className="p-3 active:scale-90 active:bg-gray-800 rounded-lg transition-all"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6">
               <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
             </svg>
