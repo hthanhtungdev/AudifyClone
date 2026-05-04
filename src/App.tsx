@@ -312,6 +312,41 @@ function App() {
         </div>
       </div>
 
+      {/* Install Prompt */}
+      {showInstallPrompt && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => {
+            setShowInstallPrompt(false);
+            localStorage.setItem('pwa_prompt_seen', 'true');
+          }}
+        >
+          <div 
+            className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-bold mb-4">📱 Cài đặt App</h3>
+            <p className="text-gray-300 mb-4 text-sm leading-relaxed">
+              Để sử dụng giọng đọc <strong>Linh Nâng cao</strong> từ cài đặt iPhone, hãy cài đặt app này:
+            </p>
+            <ol className="text-sm text-gray-400 space-y-2 mb-6 list-decimal list-inside">
+              <li>Nhấn nút <strong>Chia sẻ</strong> (Share) ở Safari</li>
+              <li>Chọn <strong>"Thêm vào Màn hình chính"</strong></li>
+              <li>Nhấn <strong>"Thêm"</strong></li>
+            </ol>
+            <button
+              onClick={() => {
+                setShowInstallPrompt(false);
+                localStorage.setItem('pwa_prompt_seen', 'true');
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white py-3 rounded-lg font-medium"
+            >
+              Đã hiểu
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {showSettings && (
         <div 
