@@ -380,25 +380,43 @@ function App() {
         </div>
       </div>
 
-      {/* Content - Always show web view */}
+      {/* Content - Web view with text overlay option */}
       <div 
         ref={contentRef}
         className="flex-1 overflow-hidden relative"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {url ? (
-          <div className="h-full w-full bg-white">
+          <div className="h-full w-full relative">
+            {/* Web iframe */}
             <iframe
               src={`/api/proxy?url=${encodeURIComponent(url)}`}
-              className="w-full h-full border-0"
+              className="w-full h-full border-0 bg-white"
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
               title="Web Browser"
             />
             
+            {/* Floating text overlay button */}
+            {paragraphs.length > 0 && (
+              <button
+                onClick={() => {
+                  // Show text overlay modal
+                  const modal = document.getElementById('text-overlay-modal');
+                  if (modal) modal.style.display = 'flex';
+                }}
+                className="fixed bottom-24 right-4 bg-blue-600 text-white p-4 rounded-full shadow-lg z-20 active:scale-95 transition-transform"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
+                  <path d="M3 9h14V7H3v2zm0 4h14v-2H3v2zm0 4h14v-2H3v2zm16 0h2v-2h-2v2zm0-10v2h2V7h-2zm0 6h2v-2h-2v2z"/>
+                </svg>
+              </button>
+            )}
+            
             {/* Hint overlay */}
             {!isPlaying && (
               <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white px-4 py-2 rounded-full text-sm shadow-lg backdrop-blur z-10 pointer-events-none">
-                💡 Click vào văn bản để nghe
+                💡 Nhấn nút 📄 để xem văn bản và nghe
               </div>
             )}
           </div>
@@ -406,10 +424,90 @@ function App() {
           <div className="flex items-center justify-center h-full text-gray-500 p-4">
             <div className="text-center">
               <p className="text-lg mb-2">Nhập URL và nhấn Tải</p>
-              <p className="text-sm text-gray-600">Sau đó click vào văn bản trong trang web để nghe</p>
+              <p className="text-sm text-gray-600">Web sẽ hiển thị và bạn có thể click để nghe</p>
             </div>
           </div>
         )}
+      </div>
+      
+      {/* Text Overlay Modal */}
+      <div
+        id="text-overlay-modal"
+        className="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            e.currentTarget.style.display = 'none';
+          }
+        }}
+      >
+        <div className="bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-gray-800">
+            <h3 className="text-lg font-bold">📖 Văn bản</h3>
+            <button
+              onClick={() => {
+                const modal = document.getElementById('text-overlay-modal');
+                if (modal) modal.style.display = 'none';
+              }}
+              className="p-2 hover:bg-gray-800 rounded-lg"
+            >
+              ✕
+            </button>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            {paragraphs.map((para, index) => (
+              <div
+                key={index}
+                onClick={() => {
+                  // Speak this paragraph
+                  window.speechSynthesis.cancel();
+                  
+                  const utterance = new SpeechSynthesisUtterance(para);
+                  utterance.lang = 'vi-VN';
+                  utterance.rate = speed;
+                  utterance.pitch = 1;
+                  utterance.volume = 1;
+                  
+                  utterance.onstart = () => {
+                    setIsPlaying(true);
+                    setCurrentParagraph(index);
+                  };
+                  
+                  utterance.onend = () => {
+                    // Auto play next
+                    if (index + 1 < paragraphs.length) {
+                      setTimeout(() => {
+                        const nextBtn = document.querySelector(`[data-para-index="${index + 1}"]`) as HTMLElement;
+                        if (nextBtn) nextBtn.click();
+                      }, 100);
+                    } else {
+                      setIsPlaying(false);
+                      setCurrentParagraph(-1);
+                    }
+                  };
+                  
+                  utterance.onerror = () => {
+                    setIsPlaying(false);
+                  };
+                  
+                  window.speechSynthesis.speak(utterance);
+                }}
+                data-para-index={index}
+                className={`p-3 rounded-lg cursor-pointer transition-all select-none ${
+                  currentParagraph === index
+                    ? 'bg-blue-600 text-white shadow-lg'
+                    : 'bg-gray-800 hover:bg-gray-700 active:bg-gray-600'
+                }`}
+                style={{
+                  WebkitTapHighlightColor: 'transparent',
+                  WebkitUserSelect: 'none'
+                }}
+              >
+                <p className="text-sm leading-relaxed">{para}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Bottom Controls */}
