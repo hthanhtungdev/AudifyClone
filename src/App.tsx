@@ -324,7 +324,7 @@ function App() {
   useEffect(() => {
     if (currentWordIndex >= 0 && isAutoScrollEnabled && mainContentRef.current) {
       const now = Date.now();
-      if (now - lastScrollTime.current < 1000) return;
+      if (now - lastScrollTime.current < 800) return;
 
       const activeElement = document.querySelector('[data-word-active="true"]') as HTMLElement;
       if (activeElement) {
@@ -333,14 +333,15 @@ function App() {
         const elementRect = activeElement.getBoundingClientRect();
         const relativeTop = elementRect.top - containerRect.top;
 
-        if (relativeTop > containerRect.height * 0.5 || relativeTop < 100) {
+        // Chỉ cuộn khi từ gần ra khỏi viewport
+        if (relativeTop > containerRect.height * 0.6 || relativeTop < 80) {
           const targetTop = container.scrollTop + relativeTop - (containerRect.height / 3);
           
           isScrollingToRef.current = true;
           container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
           
           lastScrollTime.current = now;
-          setTimeout(() => { isScrollingToRef.current = false; }, 800);
+          setTimeout(() => { isScrollingToRef.current = false; }, 600);
         }
       }
     }
