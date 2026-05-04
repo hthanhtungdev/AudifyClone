@@ -424,10 +424,6 @@ function App() {
                       debugLog(`👆 Pointer UP on p${pIndex}`);
                       handleTextClick(paragraphStart);
                     }}
-                    onPointerCancel={(e) => {
-                      e.currentTarget.style.backgroundColor = '';
-                      debugLog('❌ Pointer CANCELLED');
-                    }}
                     data-active={isActive ? "true" : "false"}
                     className={`w-full text-left mb-4 px-4 py-3 rounded-lg select-none transition-colors duration-150 ${
                       isActive 
