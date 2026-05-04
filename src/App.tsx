@@ -147,9 +147,11 @@ function App() {
 
   // Speak paragraph - CRITICAL: Must be called directly from user event
   const speakParagraph = (index: number) => {
+    addLog(`speakParagraph(${index})`);
     console.log('speakParagraph called with index:', index);
     
     if (index < 0 || index >= paragraphs.length) {
+      addLog(`Invalid index: ${index}`);
       console.error('Invalid index:', index, 'Total:', paragraphs.length);
       return;
     }
@@ -159,6 +161,7 @@ function App() {
 
     // Create utterance
     const text = paragraphs[index];
+    addLog(`Text: ${text.substring(0, 30)}...`);
     console.log('Speaking text:', text.substring(0, 50) + '...');
     
     const utterance = new SpeechSynthesisUtterance(text);
@@ -177,12 +180,14 @@ function App() {
     utterance.volume = 1;
 
     utterance.onstart = () => {
+      addLog(`Speech started: ${index}`);
       console.log('Speech started for index:', index);
       setIsPlaying(true);
       setCurrentParagraph(index);
     };
 
     utterance.onend = () => {
+      addLog(`Speech ended: ${index}`);
       console.log('Speech ended for index:', index);
       // Auto play next paragraph
       if (index + 1 < paragraphs.length) {
@@ -194,6 +199,7 @@ function App() {
     };
 
     utterance.onerror = (e) => {
+      addLog(`ERROR: ${e.error}`);
       console.error('Speech error:', e.error, 'for index:', index);
       setIsPlaying(false);
     };
@@ -349,8 +355,37 @@ function App() {
           >
             <Settings className="w-5 h-5" />
           </button>
+
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="p-3 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 transition-all"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+            title="Debug"
+          >
+            <span className="text-xs font-mono">🐛</span>
+          </button>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      {showDebug && (
+        <div className="fixed top-16 left-2 right-2 bg-black/95 border border-green-500 rounded-lg p-3 z-50 max-h-64 overflow-y-auto text-xs font-mono">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-green-400 font-bold">DEBUG LOG</span>
+            <button 
+              onClick={() => setDebugLogs([])}
+              className="text-red-400 text-xs"
+            >
+              Clear
+            </button>
+          </div>
+          {debugLogs.map((log, i) => (
+            <div key={i} className="text-green-300 text-[10px] leading-tight">
+              {log}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Install Prompt */}
       {showInstallPrompt && (
