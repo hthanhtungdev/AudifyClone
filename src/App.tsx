@@ -6,21 +6,18 @@ function App() {
   const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
   const [content, setContent] = useState(() => (localStorage.getItem('audify_content') || '').normalize('NFC'));
   const [loading, setLoading] = useState(false);
-  const [isPlaying, setIsPlayingState] = useState(false);
-  const isPlayingRef = useRef(false);
-  const setIsPlaying = (val: boolean) => {
-    setIsPlayingState(val);
-    isPlayingRef.current = val;
-  };
+  const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => localStorage.getItem('audify_voice') || '');
   const [showSettings, setShowSettings] = useState(false);
-  const [highlightCharIndex, setHighlightCharIndex] = useState(-1);
+  const [currentWordIndex, setCurrentWordIndex] = useState(-1);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 
-  const lastScrollY = useRef(0);
   const mainContentRef = useRef<HTMLDivElement>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const wordsRef = useRef<Array<{ text: string; start: number; end: number }>>([]);
+  const currentWordIndexRef = useRef(-1);
   const lastScrollTime = useRef(0);
   const isScrollingToRef = useRef(false);
 
@@ -45,7 +42,6 @@ function App() {
   useEffect(() => {
     const updateVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices();
-      // Chỉ giữ lại các giọng tiếng Việt từ thiết bị
       const vnVoices = availableVoices.filter(v => 
         v.lang.includes('vi') && 
         !v.name.includes('Google') && 
@@ -53,7 +49,6 @@ function App() {
       );
       setVoices(vnVoices);
 
-      // Tự động chọn giọng Premium/Enhanced tốt nhất nếu chưa chọn
       if (!selectedVoiceName && vnVoices.length > 0) {
         const sortedBest = [...vnVoices].sort((a, b) => {
           const vA = (a.name + a.voiceURI).toLowerCase();
@@ -79,6 +74,33 @@ function App() {
       window.speechSynthesis.onvoiceschanged = null;
     };
   }, [selectedVoiceName]);
+
+  // Parse content into words with positions
+  useEffect(() => {
+    if (!content) {
+      wordsRef.current = [];
+      return;
+    }
+
+    const words: Array<{ text: string; start: number; end: number }> = [];
+    let currentIndex = 0;
+
+    // Split by whitespace but keep track of positions
+    const tokens = content.match(/\S+|\s+/g) || [];
+    
+    tokens.forEach(token => {
+      const start = currentIndex;
+      const end = start + token.length;
+      
+      if (!/^\s+$/.test(token)) {
+        words.push({ text: token, start, end });
+      }
+      
+      currentIndex = end;
+    });
+
+    wordsRef.current = words;
+  }, [content]);
 
   const fetchContent = async () => {
     if (!url) return;
@@ -124,88 +146,52 @@ function App() {
     }
   };
 
-  const handlePlayPause = () => {
-    if (isPlaying) {
-      handlePause();
-    } else {
-      setIsAutoScrollEnabled(true);
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-        setIsPlaying(true);
-      } else {
-        playFromStart(highlightCharIndex !== -1 ? highlightCharIndex : 0, false);
-      }
-    }
-  };
-
-  const handlePause = () => {
-    window.speechSynthesis.cancel();
-    setIsPlaying(false);
-  };
-
-  const updateSpeed = (newSpeed: number) => {
-    setSpeed(newSpeed);
-    if (isPlaying) {
-      handlePause();
-    }
-  };
-
-  const playFromStart = (startIndex: number = 0, shouldJumpToStart: boolean = true) => {
-    if (!content) return;
-    setIsAutoScrollEnabled(true); 
-
-    let actualStartIndex = startIndex;
-
-    if (shouldJumpToStart) {
-      let paragraphStartIndex = content.lastIndexOf('\n', startIndex - 1);
-      paragraphStartIndex = paragraphStartIndex === -1 ? 0 : paragraphStartIndex + 1;
-      actualStartIndex = paragraphStartIndex;
-    }
-
-    setHighlightCharIndex(actualStartIndex);
-
-    // Haptic feedback cho iPhone
-    if (typeof window !== 'undefined' && window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate(10);
-    }
-
-    // Unlock audio trên iOS
-    const wakeUp = new SpeechSynthesisUtterance("");
-    window.speechSynthesis.speak(wakeUp);
-    
-    // Nhảy tới vị trí đang đọc
-    if (mainContentRef.current) {
-      const activeElement = document.querySelector(`span[data-index="${startIndex}"]`) as HTMLElement;
-      if (activeElement) {
-        const container = mainContentRef.current;
-        const containerRect = container.getBoundingClientRect();
-        const elementRect = activeElement.getBoundingClientRect();
-        
-        const targetTop = container.scrollTop + (elementRect.top - containerRect.top) - (containerRect.height / 3);
-        
-        container.scrollTo({ top: Math.max(0, targetTop), behavior: 'auto' });
-        lastScrollTime.current = Date.now();
-      }
-    }
-    
-    window.speechSynthesis.cancel();
-
-    const textToSpeak = content.slice(actualStartIndex);
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+  const getSelectedVoice = (): SpeechSynthesisVoice | undefined => {
+    if (!selectedVoiceName) return voices[0];
 
     const parts = selectedVoiceName.split('|');
     const targetUri = parts[0];
     const targetIdx = parts.length > 1 ? parseInt(parts[1], 10) : -1;
 
-    let voice: SpeechSynthesisVoice | undefined;
-    
     if (targetIdx !== -1 && voices[targetIdx] && voices[targetIdx].voiceURI === targetUri) {
-      voice = voices[targetIdx];
-    } else {
-      voice = voices.find(v => v.voiceURI === targetUri) ||
-        voices.find(v => v.name === targetUri) ||
-        voices[0];
+      return voices[targetIdx];
     }
+
+    return voices.find(v => v.voiceURI === targetUri) || 
+           voices.find(v => v.name === targetUri) || 
+           voices[0];
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    if (utteranceRef.current) {
+      utteranceRef.current = null;
+    }
+    setIsPlaying(false);
+    setCurrentWordIndex(-1);
+    currentWordIndexRef.current = -1;
+  };
+
+  const startSpeaking = (fromWordIndex: number = 0) => {
+    if (!content || wordsRef.current.length === 0) return;
+
+    // Stop any current speech
+    stopSpeaking();
+
+    // Haptic feedback
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(10);
+    }
+
+    // Find the word to start from
+    const startIndex = Math.max(0, Math.min(fromWordIndex, wordsRef.current.length - 1));
+    const textToSpeak = wordsRef.current.slice(startIndex).map(w => w.text).join('');
+
+    if (!textToSpeak.trim()) return;
+
+    // Create utterance
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    const voice = getSelectedVoice();
 
     if (voice) {
       utterance.voice = voice;
@@ -214,68 +200,113 @@ function App() {
 
     utterance.rate = speed;
     utterance.pitch = 1;
+    utterance.volume = 1;
 
-    utterance.onend = () => {
-      setIsPlaying(false);
-    };
-
-    utterance.onerror = () => {
-      setIsPlaying(false);
+    // Track word boundaries
+    utterance.onboundary = (event) => {
+      if (event.name === 'word') {
+        // Calculate which word we're on
+        const charIndexInSlice = event.charIndex;
+        let accumulatedChars = 0;
+        
+        for (let i = 0; i < wordsRef.current.length - startIndex; i++) {
+          const word = wordsRef.current[startIndex + i];
+          const wordLength = word.text.length;
+          
+          if (charIndexInSlice >= accumulatedChars && charIndexInSlice < accumulatedChars + wordLength) {
+            const globalWordIndex = startIndex + i;
+            setCurrentWordIndex(globalWordIndex);
+            currentWordIndexRef.current = globalWordIndex;
+            break;
+          }
+          
+          accumulatedChars += wordLength;
+        }
+      }
     };
 
     utterance.onstart = () => {
       setIsPlaying(true);
+      setCurrentWordIndex(startIndex);
+      currentWordIndexRef.current = startIndex;
     };
 
-    utterance.onpause = () => {
+    utterance.onend = () => {
       setIsPlaying(false);
+      setCurrentWordIndex(-1);
+      currentWordIndexRef.current = -1;
     };
 
-    utterance.onresume = () => {
-      setIsPlaying(true);
+    utterance.onerror = (event) => {
+      console.error('Speech error:', event);
+      setIsPlaying(false);
+      setCurrentWordIndex(-1);
+      currentWordIndexRef.current = -1;
     };
 
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        setHighlightCharIndex(event.charIndex + actualStartIndex);
-      }
-    };
+    utteranceRef.current = utterance;
 
+    // Speak
     setTimeout(() => {
-      if (isPlayingRef.current || startIndex > 0) { 
-        window.speechSynthesis.speak(utterance);
-        setIsPlaying(true);
-      }
-    }, 10);
+      window.speechSynthesis.speak(utterance);
+    }, 50);
   };
 
-  // Heartbeat để tránh iOS tự động dừng sau 15s
+  const handlePlayPause = () => {
+    if (isPlaying) {
+      stopSpeaking();
+    } else {
+      const startIndex = currentWordIndexRef.current >= 0 ? currentWordIndexRef.current : 0;
+      setIsAutoScrollEnabled(true);
+      startSpeaking(startIndex);
+    }
+  };
+
+  const handleWordClick = (wordIndex: number) => {
+    setIsAutoScrollEnabled(true);
+    startSpeaking(wordIndex);
+  };
+
+  const updateSpeed = (newSpeed: number) => {
+    setSpeed(newSpeed);
+    if (isPlaying) {
+      const currentIndex = currentWordIndexRef.current;
+      stopSpeaking();
+      setTimeout(() => {
+        startSpeaking(currentIndex >= 0 ? currentIndex : 0);
+      }, 100);
+    }
+  };
+
+  // Heartbeat để tránh iOS tự động dừng
   useEffect(() => {
     let interval: any;
     
     if (isPlaying) {
       interval = setInterval(() => {
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
       }, 10000);
     }
     return () => clearInterval(interval);
   }, [isPlaying]);
 
-  // Auto-scroll tối ưu cho iPhone
+  // Auto-scroll
   useEffect(() => {
-    if (highlightCharIndex !== -1 && isAutoScrollEnabled && mainContentRef.current) {
+    if (currentWordIndex >= 0 && isAutoScrollEnabled && mainContentRef.current) {
       const now = Date.now();
-      if (now - lastScrollTime.current < 1500) return; 
+      if (now - lastScrollTime.current < 1000) return;
 
-      const activeElement = document.querySelector('[data-highlight="true"]') as HTMLElement;
+      const activeElement = document.querySelector('[data-word-active="true"]') as HTMLElement;
       if (activeElement) {
         const container = mainContentRef.current;
         const containerRect = container.getBoundingClientRect();
         const elementRect = activeElement.getBoundingClientRect();
         const relativeTop = elementRect.top - containerRect.top;
 
-        if (relativeTop > containerRect.height * 0.4 || relativeTop < 50) {
+        if (relativeTop > containerRect.height * 0.5 || relativeTop < 100) {
           const targetTop = container.scrollTop + relativeTop - (containerRect.height / 3);
           
           isScrollingToRef.current = true;
@@ -286,23 +317,29 @@ function App() {
         }
       }
     }
-  }, [highlightCharIndex, isAutoScrollEnabled]);
+  }, [currentWordIndex, isAutoScrollEnabled]);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const currentScrollY = e.currentTarget.scrollTop;
-    
+  const handleScroll = () => {
     if (!isScrollingToRef.current && isPlaying && isAutoScrollEnabled) {
-      if (Math.abs(currentScrollY - lastScrollY.current) > 5) {
-        setIsAutoScrollEnabled(false);
-      }
+      setIsAutoScrollEnabled(false);
     }
-    
-    lastScrollY.current = currentScrollY;
+  };
+
+  const handlePrevious = () => {
+    const prevIndex = Math.max(0, currentWordIndexRef.current - 20);
+    setIsAutoScrollEnabled(true);
+    startSpeaking(prevIndex);
+  };
+
+  const handleNext = () => {
+    const nextIndex = Math.min(wordsRef.current.length - 1, currentWordIndexRef.current + 20);
+    setIsAutoScrollEnabled(true);
+    startSpeaking(nextIndex);
   };
 
   return (
     <div className="w-full h-screen bg-black text-white flex flex-col font-sans">
-      {/* Top Bar - Giống Safari Mobile */}
+      {/* Top Bar */}
       <div className="bg-[#1c1c1e] border-b border-gray-800 px-4 py-3 flex items-center gap-3">
         <button className="p-2 hover:bg-gray-800 rounded-lg transition-colors">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5">
@@ -337,7 +374,7 @@ function App() {
         </button>
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main 
         ref={mainContentRef}
         className="flex-1 overflow-y-auto px-4 py-6 pb-32"
@@ -352,44 +389,28 @@ function App() {
               {content.split('\n')[0].slice(0, 100)}
             </h1>
             
-            {/* Content */}
+            {/* Content with word-by-word rendering */}
             <div className="text-base leading-relaxed text-gray-200" style={{ textRendering: 'optimizeLegibility' }}>
-              {(() => {
-                let currentGlobalIndex = 0;
-                return content.split(/([\r\n]+)/).map((segment, segIndex) => {
-                  if (/^[\r\n]+$/.test(segment)) {
-                    currentGlobalIndex += segment.length;
-                    return null;
-                  }
-
-                  return (
-                    <p 
-                      key={segIndex} 
-                      className="mb-5 text-justify"
+              {wordsRef.current.map((word, index) => {
+                const isActive = index === currentWordIndex;
+                const isNewLine = word.start > 0 && content[word.start - 1] === '\n';
+                
+                return (
+                  <span key={index}>
+                    {isNewLine && <br />}
+                    <span
+                      onClick={() => handleWordClick(index)}
+                      data-word-index={index}
+                      data-word-active={isActive ? "true" : "false"}
+                      className={`cursor-pointer transition-all duration-150 hover:bg-gray-700 px-0.5 rounded ${
+                        isActive ? "bg-blue-600 text-white font-medium" : ""
+                      }`}
                     >
-                      {segment.split(/(\s+)/).map((part, i) => {
-                        const wordStartIdx = currentGlobalIndex;
-                        const isHighlighted = highlightCharIndex >= wordStartIdx && highlightCharIndex < wordStartIdx + part.length;
-                        currentGlobalIndex += part.length;
-                        return (
-                          <span
-                            key={i}
-                            onClick={(e) => {
-                              if (e.detail > 2) return; 
-                              playFromStart(wordStartIdx);
-                            }}
-                            data-index={wordStartIdx}
-                            className={`cursor-pointer transition-all duration-150 ${isHighlighted ? "bg-blue-600 text-white px-1 rounded" : ""}`}
-                            data-highlight={isHighlighted ? "true" : "false"}
-                          >
-                            {part}
-                          </span>
-                        );
-                      })}
-                    </p>
-                  );
-                });
-              })()}
+                      {word.text}
+                    </span>
+                  </span>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -412,15 +433,12 @@ function App() {
         </button>
       )}
 
-      {/* Bottom Control Bar - Giống ảnh */}
+      {/* Bottom Control Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#1c1c1e] border-t border-gray-800 px-6 py-4 safe-area-inset-bottom z-50">
         <div className="flex items-center justify-between max-w-md mx-auto">
           {/* Previous Button */}
           <button
-            onClick={() => {
-              const prevIndex = Math.max(0, highlightCharIndex - 100);
-              playFromStart(prevIndex);
-            }}
+            onClick={handlePrevious}
             disabled={!content}
             className="p-3 disabled:opacity-30 transition-opacity"
           >
@@ -431,10 +449,7 @@ function App() {
 
           {/* Next Button */}
           <button
-            onClick={() => {
-              const nextIndex = Math.min(content.length - 1, highlightCharIndex + 100);
-              playFromStart(nextIndex);
-            }}
+            onClick={handleNext}
             disabled={!content}
             className="p-3 disabled:opacity-30 transition-opacity"
           >
@@ -468,7 +483,7 @@ function App() {
             <Settings className="w-7 h-7" />
           </button>
 
-          {/* Folder/More Button */}
+          {/* Folder Button */}
           <button className="p-3">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-7 h-7">
               <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
