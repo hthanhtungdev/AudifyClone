@@ -222,7 +222,25 @@ function App() {
     const text = element.textContent || '';
     
     if (!text || text.trim().length < 10) {
-      addLog('Text too short, skipping');
+      addLog('Text too short, trying next element');
+      
+      // If auto-play is enabled, try next element
+      if (shouldAutoPlayRef.current && webContentRef.current) {
+        const allElements = Array.from(
+          webContentRef.current.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li') || []
+        ) as HTMLElement[];
+        
+        const currentIndex = allElements.indexOf(element);
+        const nextElement = allElements[currentIndex + 1];
+        
+        if (nextElement) {
+          addLog('Skipping to next element');
+          speakElement(nextElement);
+        } else {
+          addLog('No more elements');
+          setIsPlaying(false);
+        }
+      }
       return;
     }
     
