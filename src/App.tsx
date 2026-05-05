@@ -262,48 +262,33 @@ function App() {
       // Only auto-play if enabled
       if (!shouldAutoPlayRef.current) {
         setIsPlaying(false);
+        addLog('Auto-play disabled, stopping');
         return;
       }
       
-      // Find next paragraph/heading
-      let nextElement: HTMLElement | null = null;
-      let sibling = element.nextElementSibling;
+      // Find ALL text elements in the document
+      const allElements = Array.from(
+        webContentRef.current?.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li') || []
+      ) as HTMLElement[];
       
-      while (sibling) {
-        if (sibling.tagName === 'P' || sibling.tagName.match(/^H[1-6]$/) || sibling.tagName === 'LI') {
-          nextElement = sibling as HTMLElement;
-          break;
-        }
-        const child = sibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
-        if (child) {
-          nextElement = child as HTMLElement;
-          break;
-        }
-        sibling = sibling.nextElementSibling;
+      // Find current element index
+      const currentIndex = allElements.indexOf(element);
+      
+      if (currentIndex === -1) {
+        addLog('Current element not found in list');
+        setIsPlaying(false);
+        return;
       }
       
-      // If no next sibling, try parent's next sibling
-      if (!nextElement && element.parentElement) {
-        let parentSibling = element.parentElement.nextElementSibling;
-        while (parentSibling && !nextElement) {
-          if (parentSibling.tagName === 'P' || parentSibling.tagName.match(/^H[1-6]$/) || parentSibling.tagName === 'LI') {
-            nextElement = parentSibling as HTMLElement;
-            break;
-          }
-          const child = parentSibling.querySelector('p, h1, h2, h3, h4, h5, h6, li');
-          if (child) {
-            nextElement = child as HTMLElement;
-            break;
-          }
-          parentSibling = parentSibling.nextElementSibling;
-        }
-      }
+      // Get next element
+      const nextElement = allElements[currentIndex + 1];
       
       if (nextElement) {
+        addLog(`Auto-playing next (${currentIndex + 1}/${allElements.length})`);
         speakElement(nextElement);
       } else {
         setIsPlaying(false);
-        addLog('■ Finished');
+        addLog('■ Finished - no more paragraphs');
       }
     };
     
@@ -563,7 +548,7 @@ function App() {
               }
               
               if (textElement) {
-                shouldAutoPlayRef.current = true;
+                shouldAutoPlayRef.current = true; // Enable auto-play when clicking
                 speakElement(textElement);
               }
             }}
