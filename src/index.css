@@ -61,6 +61,24 @@ body {
   color: #fff !important;
 }
 
+/* Hide website navigation, header, footer, ads */
+.web-content nav,
+.web-content header,
+.web-content footer,
+.web-content .header,
+.web-content .navigation,
+.web-content .nav,
+.web-content .menu,
+.web-content .sidebar,
+.web-content .ads,
+.web-content .advertisement,
+.web-content [class*="header"],
+.web-content [class*="nav"],
+.web-content [id*="header"],
+.web-content [id*="nav"] {
+  display: none !important;
+}
+
 /* Highlight for currently speaking element - MUST come after general styles */
 .web-content .speaking,
 .web-content .speaking * {
