@@ -43,6 +43,7 @@ function App() {
   const isProcessingRef = useRef(false);
   const currentSentenceRef = useRef<HTMLElement | null>(null);
   const shouldAutoPlayRef = useRef(true);
+  const isPausedRef = useRef(false); // Track if user manually paused
 
   // Get active tab
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -378,10 +379,17 @@ function App() {
     };
     
     utterance.onend = () => {
-      // Remove highlight
-      element.classList.remove('speaking');
+      addLog(`Finished speaking. Auto-play: ${shouldAutoPlayRef.current}, Paused: ${isPausedRef.current}`);
       
-      addLog(`Finished speaking. Auto-play: ${shouldAutoPlayRef.current}`);
+      // If user paused, keep highlight and don't auto-play
+      if (isPausedRef.current) {
+        addLog('User paused - keeping highlight');
+        setIsPlaying(false);
+        return;
+      }
+      
+      // Remove highlight only if naturally finished (not paused)
+      element.classList.remove('speaking');
       
       // Only auto-play if enabled
       if (!shouldAutoPlayRef.current) {
@@ -431,6 +439,9 @@ function App() {
 
   // Stop speaking
   const stopSpeaking = () => {
+    // Set paused flag BEFORE canceling
+    isPausedRef.current = true;
+    
     // Clear any pending timeout
     if (pendingTimeoutRef.current) {
       clearTimeout(pendingTimeoutRef.current);
@@ -440,9 +451,6 @@ function App() {
     window.speechSynthesis.cancel();
     setIsPlaying(false);
     
-    // Keep highlight on current element (don't clear it)
-    // This helps user see where they paused
-    
     utteranceRef.current = null;
     isProcessingRef.current = false;
     addLog('Paused - position saved with highlight');
@@ -450,6 +458,9 @@ function App() {
 
   // Resume speaking from current position
   const resumeSpeaking = () => {
+    // Clear paused flag when resuming
+    isPausedRef.current = false;
+    
     if (!currentSentenceRef.current) {
       addLog('No saved position, starting from beginning');
       // Find first paragraph
@@ -481,6 +492,9 @@ function App() {
   // Handle previous
   const handlePrevious = () => {
     addLog('Previous clicked');
+    
+    // Clear paused flag
+    isPausedRef.current = false;
     
     // Stop current speech
     window.speechSynthesis.cancel();
@@ -542,6 +556,9 @@ function App() {
   // Handle next
   const handleNext = () => {
     addLog('Next clicked');
+    
+    // Clear paused flag
+    isPausedRef.current = false;
     
     // Stop current speech
     window.speechSynthesis.cancel();
