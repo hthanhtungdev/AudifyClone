@@ -259,6 +259,8 @@ function App() {
       // Remove highlight
       element.classList.remove('speaking');
       
+      addLog(`Finished speaking. Auto-play: ${shouldAutoPlayRef.current}`);
+      
       // Only auto-play if enabled
       if (!shouldAutoPlayRef.current) {
         setIsPlaying(false);
@@ -271,8 +273,12 @@ function App() {
         webContentRef.current?.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li') || []
       ) as HTMLElement[];
       
+      addLog(`Found ${allElements.length} total elements`);
+      
       // Find current element index
       const currentIndex = allElements.indexOf(element);
+      
+      addLog(`Current index: ${currentIndex}`);
       
       if (currentIndex === -1) {
         addLog('Current element not found in list');
@@ -284,7 +290,7 @@ function App() {
       const nextElement = allElements[currentIndex + 1];
       
       if (nextElement) {
-        addLog(`Auto-playing next (${currentIndex + 1}/${allElements.length})`);
+        addLog(`Auto-playing next (${currentIndex + 2}/${allElements.length})`);
         speakElement(nextElement);
       } else {
         setIsPlaying(false);

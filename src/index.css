@@ -61,21 +61,24 @@ body {
   color: #fff !important;
 }
 
+/* Highlight for currently speaking element - MUST come after general styles */
+.web-content .speaking,
+.web-content .speaking * {
+  background-color: #2563eb !important;
+  color: white !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.6) !important;
+  outline: none !important;
+  border: none !important;
+}
+
 .web-content a {
   color: #60a5fa !important;
 }
 
 .web-content img {
   opacity: 0.9;
-}
-
-/* Highlight for currently speaking element */
-.web-content .speaking {
-  background-color: #2563eb !important;
-  color: white !important;
-  padding: 4px 8px !important;
-  border-radius: 4px !important;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.5) !important;
 }
 
 /* Subtle hover for paragraphs and headings */
