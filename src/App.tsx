@@ -504,13 +504,15 @@ function App() {
               onChange={(e) => setUrl(e.target.value)}
               onFocus={(e) => e.target.select()}
               placeholder="Nhập URL..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-sm outline-none focus:border-blue-500"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
               onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
-              style={{ position: 'relative', zIndex: 100 }}
+              style={{ paddingRight: url ? '36px' : '12px' }}
             />
             {url && (
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   setUrl('');
                   setRawHTML('');
                   setContent('');
@@ -518,11 +520,11 @@ function App() {
                   localStorage.removeItem('audify_html');
                   localStorage.removeItem('audify_content');
                 }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-700 rounded-full transition-colors"
-                style={{ zIndex: 101 }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
+                type="button"
               >
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             )}
@@ -531,7 +533,6 @@ function App() {
             onClick={fetchContent}
             disabled={loading}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg font-medium disabled:opacity-50 flex items-center gap-2"
-            style={{ position: 'relative', zIndex: 100 }}
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Tải'}
           </button>
