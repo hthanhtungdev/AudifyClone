@@ -522,6 +522,7 @@ function App() {
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
                 type="button"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
               >
                 <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -574,15 +575,7 @@ function App() {
           <div className="flex items-center justify-center h-full text-gray-500 p-4">
             <div className="text-center">
               <p className="text-lg mb-2">Nhập URL và nhấn Tải</p>
-              <p className="text-sm text-gray-600">Click vào văn bản để nghe</p>
             </div>
-          </div>
-        )}
-        
-        {/* Hint */}
-        {rawHTML && !isPlaying && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-blue-600/90 text-white px-4 py-2 rounded-full text-sm shadow-lg backdrop-blur z-10 pointer-events-none">
-            💡 Click vào văn bản để nghe
           </div>
         )}
       </div>
