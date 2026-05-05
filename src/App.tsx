@@ -159,18 +159,66 @@ function App() {
     if (webContentRef.current && activeTab?.html) {
       webContentRef.current.innerHTML = activeTab.html;
       addLog('HTML content set for active tab');
+      
+      // Intercept all link clicks
+      const handleLinkClick = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const link = target.closest('a');
+        
+        if (link && link.href) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const href = link.href;
+          addLog(`Link clicked: ${href}`);
+          
+          // Check if it's a same-origin link or can be proxied
+          try {
+            const linkUrl = new URL(href);
+            
+            // If it's http/https and looks like a readable page
+            if (linkUrl.protocol === 'http:' || linkUrl.protocol === 'https:') {
+              // Check if it's likely a readable page (not an app deep link)
+              if (!href.includes('shopee.vn/universal-link') && 
+                  !href.includes('app.link') &&
+                  !href.includes('intent://') &&
+                  !linkUrl.hostname.includes('app.')) {
+                
+                // Load in current tab
+                setUrl(href);
+                fetchContentForUrl(href);
+              } else {
+                // External app link - show alert
+                addLog('External app link detected');
+                alert('Link này mở app bên ngoài. Vui lòng mở trong browser thường để truy cập.');
+              }
+            }
+          } catch (err) {
+            addLog(`Invalid URL: ${href}`);
+          }
+        }
+      };
+      
+      webContentRef.current.addEventListener('click', handleLinkClick);
+      
+      return () => {
+        webContentRef.current?.removeEventListener('click', handleLinkClick);
+      };
     }
   }, [activeTab?.html]);
 
   // Fetch content and create/update tab
   const fetchContent = async () => {
     if (!url) return;
-    
+    await fetchContentForUrl(url);
+  };
+
+  const fetchContentForUrl = async (targetUrl: string) => {
     setLoading(true);
-    addLog(`Fetching: ${url}`);
+    addLog(`Fetching: ${targetUrl}`);
     
     try {
-      const proxyUrl = `/api/proxy?url=${encodeURIComponent(url)}`;
+      const proxyUrl = `/api/proxy?url=${encodeURIComponent(targetUrl)}`;
       const response = await fetch(proxyUrl);
       
       if (!response.ok) {
@@ -229,7 +277,7 @@ function App() {
       }
 
       // Create or update tab
-      const existingTab = tabs.find(t => t.url === url);
+      const existingTab = tabs.find(t => t.url === targetUrl);
       
       if (existingTab) {
         // Update existing tab
@@ -240,18 +288,28 @@ function App() {
         ));
         setActiveTabId(existingTab.id);
       } else {
-        // Create new tab
-        const newTab: Tab = {
-          id: Date.now().toString(),
-          url,
-          title,
-          html: htmlText,
-          content: text.trim()
-        };
-        setTabs([...tabs, newTab]);
-        setActiveTabId(newTab.id);
+        // Update current tab if it matches the active one
+        if (activeTab && activeTab.url === url) {
+          setTabs(tabs.map(t => 
+            t.id === activeTab.id 
+              ? { ...t, url: targetUrl, html: htmlText, content: text.trim(), title }
+              : t
+          ));
+        } else {
+          // Create new tab
+          const newTab: Tab = {
+            id: Date.now().toString(),
+            url: targetUrl,
+            title,
+            html: htmlText,
+            content: text.trim()
+          };
+          setTabs([...tabs, newTab]);
+          setActiveTabId(newTab.id);
+        }
       }
 
+      setUrl(targetUrl);
       addLog(`✓ Loaded ${text.length} characters`);
       
     } catch (err) {
