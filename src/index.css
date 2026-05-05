@@ -79,6 +79,22 @@ body {
   display: none !important;
 }
 
+/* Remove colors from buttons and links - make them grayscale */
+.web-content button,
+.web-content .button,
+.web-content [class*="btn"],
+.web-content [class*="button"] {
+  background-color: transparent !important;
+  border: 1px solid #4b5563 !important;
+  color: #9ca3af !important;
+  pointer-events: none !important;
+}
+
+.web-content a {
+  color: #60a5fa !important;
+  text-decoration: underline !important;
+}
+
 /* Highlight for currently speaking element - MUST come after general styles */
 .web-content .speaking,
 .web-content .speaking * {
@@ -89,10 +105,6 @@ body {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.6) !important;
   outline: none !important;
   border: none !important;
-}
-
-.web-content a {
-  color: #60a5fa !important;
 }
 
 .web-content img {

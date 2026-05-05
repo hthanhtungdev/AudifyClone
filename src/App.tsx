@@ -1,10 +1,32 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Loader2, Play, Pause, SkipBack, SkipForward } from 'lucide-react';
+import { Settings, Loader2, Play, Pause, SkipBack, SkipForward, Plus, X } from 'lucide-react';
 import { Readability } from '@mozilla/readability';
 
+interface Tab {
+  id: string;
+  url: string;
+  title: string;
+  html: string;
+  content: string;
+}
+
 function App() {
-  const [url, setUrl] = useState(() => localStorage.getItem('audify_url') || '');
-  const [content, setContent] = useState(() => localStorage.getItem('audify_content') || '');
+  const [tabs, setTabs] = useState<Tab[]>(() => {
+    const savedTabs = localStorage.getItem('audify_tabs');
+    if (savedTabs) {
+      try {
+        return JSON.parse(savedTabs);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  const [activeTabId, setActiveTabId] = useState<string>(() => {
+    return localStorage.getItem('audify_active_tab') || '';
+  });
+  
+  const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(() => parseFloat(localStorage.getItem('audify_speed') || '1.0'));
@@ -13,15 +35,33 @@ function App() {
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [showDebug, setShowDebug] = useState(false);
-  const [rawHTML, setRawHTML] = useState(() => localStorage.getItem('audify_html') || ''); // Store raw HTML
 
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const webContentRef = useRef<HTMLDivElement>(null);
   const pendingTimeoutRef = useRef<number | null>(null);
   const isProcessingRef = useRef(false);
-  const currentSentenceRef = useRef<HTMLElement | null>(null); // Track current sentence element
-  const shouldAutoPlayRef = useRef(true); // Control auto-play behavior
+  const currentSentenceRef = useRef<HTMLElement | null>(null);
+  const shouldAutoPlayRef = useRef(true);
+
+  // Get active tab
+  const activeTab = tabs.find(t => t.id === activeTabId);
+
+  // Save tabs to localStorage
+  useEffect(() => {
+    localStorage.setItem('audify_tabs', JSON.stringify(tabs));
+  }, [tabs]);
+
+  useEffect(() => {
+    localStorage.setItem('audify_active_tab', activeTabId);
+  }, [activeTabId]);
+
+  // Update URL input when active tab changes
+  useEffect(() => {
+    if (activeTab) {
+      setUrl(activeTab.url);
+    }
+  }, [activeTabId, activeTab]);
 
   // Debug logger
   const addLog = (message: string) => {
@@ -111,35 +151,22 @@ function App() {
 
   // Save to localStorage
   useEffect(() => {
-    localStorage.setItem('audify_url', url);
-  }, [url]);
-
-  useEffect(() => {
-    localStorage.setItem('audify_content', content);
-  }, [content]);
-
-  useEffect(() => {
-    localStorage.setItem('audify_html', rawHTML);
-  }, [rawHTML]);
-
-  useEffect(() => {
     localStorage.setItem('audify_speed', speed.toString());
   }, [speed]);
 
-  // Set HTML content once when rawHTML changes
+  // Set HTML content once when activeTab changes
   useEffect(() => {
-    if (webContentRef.current && rawHTML) {
-      webContentRef.current.innerHTML = rawHTML;
-      addLog('HTML content set');
+    if (webContentRef.current && activeTab?.html) {
+      webContentRef.current.innerHTML = activeTab.html;
+      addLog('HTML content set for active tab');
     }
-  }, [rawHTML]);
+  }, [activeTab?.html]);
 
-  // Fetch content
+  // Fetch content and create/update tab
   const fetchContent = async () => {
     if (!url) return;
     
     setLoading(true);
-    setContent('');
     addLog(`Fetching: ${url}`);
     
     try {
@@ -157,9 +184,6 @@ function App() {
         throw new Error('Nội dung quá ngắn hoặc trống');
       }
 
-      // Store raw HTML for rendering
-      setRawHTML(htmlText);
-
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
       
@@ -168,13 +192,14 @@ function App() {
       const article = reader.parse();
 
       let text = '';
+      let title = doc.title || 'Untitled';
       
       if (article && article.content && article.content.length > 100) {
         addLog('Using Readability parser');
+        title = article.title || title;
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = article.content;
         
-        // Extract paragraphs properly
         const paragraphs: string[] = [];
         const walker = document.createTreeWalker(
           tempDiv,
@@ -195,7 +220,6 @@ function App() {
         
         text = paragraphs.join('\n\n');
       } else {
-        // Fallback: get all text from body
         addLog('Using fallback: body text');
         text = doc.body.textContent || '';
       }
@@ -204,14 +228,36 @@ function App() {
         throw new Error('Không tìm thấy nội dung văn bản. URL có thể không hợp lệ hoặc bị chặn.');
       }
 
-      setContent(text.trim());
+      // Create or update tab
+      const existingTab = tabs.find(t => t.url === url);
+      
+      if (existingTab) {
+        // Update existing tab
+        setTabs(tabs.map(t => 
+          t.id === existingTab.id 
+            ? { ...t, html: htmlText, content: text.trim(), title }
+            : t
+        ));
+        setActiveTabId(existingTab.id);
+      } else {
+        // Create new tab
+        const newTab: Tab = {
+          id: Date.now().toString(),
+          url,
+          title,
+          html: htmlText,
+          content: text.trim()
+        };
+        setTabs([...tabs, newTab]);
+        setActiveTabId(newTab.id);
+      }
+
       addLog(`✓ Loaded ${text.length} characters`);
       
     } catch (err) {
       const errorMsg = (err as Error).message;
       addLog(`✗ Error: ${errorMsg}`);
       alert('❌ Lỗi tải nội dung:\n\n' + errorMsg + '\n\nGợi ý:\n- Kiểm tra URL có đúng không\n- Thử URL khác\n- Một số trang web có thể bị chặn');
-      setContent('');
     } finally {
       setLoading(false);
     }
@@ -503,6 +549,50 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950 text-white">
+      {/* Tab Bar */}
+      {tabs.length > 0 && (
+        <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 overflow-x-auto flex items-center gap-1 px-2 py-1">
+          {tabs.map(tab => (
+            <div
+              key={tab.id}
+              onClick={() => setActiveTabId(tab.id)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap cursor-pointer transition-colors ${
+                tab.id === activeTabId
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+              }`}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
+              <span className="max-w-[120px] truncate">{tab.title}</span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newTabs = tabs.filter(t => t.id !== tab.id);
+                  setTabs(newTabs);
+                  if (tab.id === activeTabId && newTabs.length > 0) {
+                    setActiveTabId(newTabs[0].id);
+                  }
+                }}
+                className="hover:bg-gray-700 rounded p-0.5"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              setUrl('');
+              setActiveTabId('');
+            }}
+            className="p-1.5 hover:bg-gray-800 rounded-lg"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+      
       {/* Top Bar */}
       <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 p-3 relative z-50">
         <div className="flex gap-2">
@@ -523,11 +613,12 @@ function App() {
                   e.preventDefault();
                   e.stopPropagation();
                   setUrl('');
-                  setRawHTML('');
-                  setContent('');
-                  localStorage.removeItem('audify_url');
-                  localStorage.removeItem('audify_html');
-                  localStorage.removeItem('audify_content');
+                  if (activeTab) {
+                    setTabs(tabs.filter(t => t.id !== activeTab.id));
+                    if (tabs.length > 1) {
+                      setActiveTabId(tabs[0].id === activeTab.id ? tabs[1].id : tabs[0].id);
+                    }
+                  }
                 }}
                 className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
                 type="button"
@@ -555,7 +646,7 @@ function App() {
         className="flex-1 overflow-y-auto relative bg-black"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {rawHTML ? (
+        {activeTab?.html ? (
           <div
             ref={webContentRef}
             className="w-full h-full web-content"
@@ -597,7 +688,7 @@ function App() {
         <div className="max-w-md mx-auto flex items-center justify-center gap-3">
           <button
             onClick={handlePrevious}
-            disabled={!rawHTML}
+            disabled={!activeTab}
             className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
@@ -606,7 +697,7 @@ function App() {
 
           <button
             onClick={handlePlayPause}
-            disabled={!rawHTML}
+            disabled={!activeTab}
             className="p-4 rounded-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-30 transition-all shadow-lg flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
@@ -619,7 +710,7 @@ function App() {
 
           <button
             onClick={handleNext}
-            disabled={!rawHTML}
+            disabled={!activeTab}
             className="p-2.5 rounded-full bg-gray-800 hover:bg-gray-700 active:bg-gray-600 disabled:opacity-30 transition-all flex-shrink-0"
             style={{ WebkitTapHighlightColor: 'transparent' }}
           >
