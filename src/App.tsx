@@ -744,23 +744,6 @@ function App() {
                   +
                 </button>
               </div>
-              
-              {/* Quick preset buttons */}
-              <div className="grid grid-cols-4 gap-2">
-                {[0.8, 1.0, 1.2, 1.5].map((presetSpeed) => (
-                  <button
-                    key={presetSpeed}
-                    onClick={() => setSpeed(presetSpeed)}
-                    className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                      Math.abs(speed - presetSpeed) < 0.05
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                    }`}
-                  >
-                    {presetSpeed}x
-                  </button>
-                ))}
-              </div>
             </div>
 
             <button
