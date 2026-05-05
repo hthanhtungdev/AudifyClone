@@ -497,16 +497,36 @@ function App() {
       {/* Top Bar */}
       <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 p-3 relative z-50">
         <div className="flex gap-2">
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onFocus={(e) => e.target.select()}
-            placeholder="Nhập URL..."
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-            onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
-            style={{ position: 'relative', zIndex: 100 }}
-          />
+          <div className="flex-1 relative">
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              placeholder="Nhập URL..."
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 pr-10 text-sm outline-none focus:border-blue-500"
+              onKeyDown={(e) => e.key === 'Enter' && fetchContent()}
+              style={{ position: 'relative', zIndex: 100 }}
+            />
+            {url && (
+              <button
+                onClick={() => {
+                  setUrl('');
+                  setRawHTML('');
+                  setContent('');
+                  localStorage.removeItem('audify_url');
+                  localStorage.removeItem('audify_html');
+                  localStorage.removeItem('audify_content');
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-700 rounded-full transition-colors"
+                style={{ zIndex: 101 }}
+              >
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
           <button
             onClick={fetchContent}
             disabled={loading}
