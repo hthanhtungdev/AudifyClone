@@ -57,8 +57,19 @@ body {
 }
 
 .web-content * {
-  background-color: transparent !important;
   color: #fff !important;
+}
+
+/* Keep original background colors for buttons, links, and interactive elements */
+.web-content button,
+.web-content a,
+.web-content input,
+.web-content select,
+.web-content textarea,
+.web-content [role="button"],
+.web-content [class*="btn"],
+.web-content [class*="button"] {
+  background-color: revert !important;
 }
 
 /* Hide website navigation, header, footer, ads */
@@ -77,22 +88,6 @@ body {
 .web-content [id*="header"],
 .web-content [id*="nav"] {
   display: none !important;
-}
-
-/* Remove colors from buttons and links - make them grayscale */
-.web-content button,
-.web-content .button,
-.web-content [class*="btn"],
-.web-content [class*="button"] {
-  background-color: transparent !important;
-  border: 1px solid #4b5563 !important;
-  color: #9ca3af !important;
-  pointer-events: none !important;
-}
-
-.web-content a {
-  color: #60a5fa !important;
-  text-decoration: underline !important;
 }
 
 /* Highlight for currently speaking element - MUST come after general styles */
