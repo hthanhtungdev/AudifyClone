@@ -706,10 +706,6 @@ function App() {
                   <div className="text-green-500 text-xl">✓</div>
                 </div>
               </div>
-              
-              <div className="mt-3 p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg text-xs text-blue-300">
-                💡 <strong>Mẹo:</strong> Để thay đổi giọng đọc, vào Settings iPhone → Accessibility → Spoken Content → Voices → Chọn <strong>Linh (Nâng cao)</strong>
-              </div>
             </div>
 
             {/* Speed Control */}
